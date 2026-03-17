@@ -1,0 +1,119 @@
+Metadata-Version: 2.4
+Name: iron-thread
+Version: 0.1.0
+Summary: Ruthless middleware that stops broken AI outputs from reaching your database
+License: MIT
+Project-URL: Homepage, https://github.com/eugene001dayne/iron-thread
+Project-URL: Documentation, https://iron-thread-production.up.railway.app/docs
+Project-URL: Repository, https://github.com/eugene001dayne/iron-thread
+Keywords: ai,validation,agents,middleware,llm
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Intended Audience :: Developers
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.24.0
+
+# iron-thread
+
+> Ruthless middleware that stops broken AI outputs from reaching your database.
+
+## Install
+```bash
+pip install iron-thread
+```
+
+## Quick Start
+```python
+from ironthread import IronThread
+
+it = IronThread()
+
+# Create a schema
+schema = it.create_schema(
+    name="User Profile",
+    schema_definition={
+        "required": ["name", "email", "age"],
+        "properties": {
+            "name": {"type": "string"},
+            "email": {"type": "string"},
+            "age": {"type": "integer"}
+        }
+    }
+)
+
+# Validate any AI output
+result = it.validate(
+    ai_output='{"name": "John", "email": "john@example.com", "age": 28}',
+    schema_id=schema["id"]
+)
+
+if result.passed:
+    print("Clean — safe to send to database")
+    print(result.data)
+else:
+    print(f"Blocked — {result.reason}")
+```
+
+## Real World Usage
+```python
+import openai
+from ironthread import IronThread
+
+it = IronThread()
+client = openai.OpenAI()
+
+# Your AI call
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Generate a user profile as JSON"}]
+)
+
+ai_output = response.choices[0].message.content
+
+# Validate before touching your database
+result = it.validate(
+    ai_output=ai_output,
+    schema_id="your-schema-id",
+    model_used="gpt-4"
+)
+
+if result.passed:
+    db.save(result.data)  # safe
+else:
+    print(f"AI output rejected: {result.reason}")
+```
+
+## API
+
+### `IronThread(host=...)`
+Initialize the client. Defaults to the hosted API.
+
+### `.create_schema(name, schema_definition, description="")`
+Create a validation schema. Returns the schema with its `id`.
+
+### `.validate(ai_output, schema_id, model_used="unknown")`
+Validate AI output against a schema. Returns a `ValidationResult`.
+
+### `.stats()`
+Get dashboard stats — total runs, pass rate, avg latency.
+
+### `.runs()`
+Get the last 50 validation runs.
+
+## ValidationResult
+```python
+result.passed      # True or False
+result.status      # "passed" / "failed" / "corrected"
+result.reason      # why it failed (if it did)
+result.data        # the clean validated output
+result.latency_ms  # how long validation took
+result.run_id      # ID of this run in the database
+```
+
+## Links
+
+- API Docs: https://iron-thread-production.up.railway.app/docs
+- GitHub: https://github.com/eugene001dayne/iron-thread
