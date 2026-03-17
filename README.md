@@ -100,6 +100,10 @@ Docs: `https://iron-thread-production.up.railway.app/docs`
 
 PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Part of the Agent Reliability Suite — The Thread Suite  
+          -Iron-Thread ✅
+          -Test-Thread 
+          -Prompt-Thread
 ## License
 
 MIT — free to use, modify, and distribute.
