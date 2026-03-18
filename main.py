@@ -88,16 +88,46 @@ def validate_against_schema(output: str, schema: dict) -> tuple[bool, Any, str]:
                 return False, None, f"Missing required field: {key}"
         properties = schema.get("properties", {})
         for key, rules in properties.items():
-            if key in parsed:
-                expected_type = rules.get("type")
-                value = parsed[key]
-                type_map = {
-                    "string": str, "integer": int,
-                    "number": (int, float), "boolean": bool,
-                    "array": list, "object": dict
-                }
-                if expected_type and not isinstance(value, type_map.get(expected_type, object)):
-                    return False, None, f"Field '{key}' expected {expected_type}"
+            if key not in parsed:
+                continue
+            value = parsed[key]
+            expected_type = rules.get("type")
+            type_map = {
+                "string": str, "integer": int,
+                "number": (int, float), "boolean": bool,
+                "array": list, "object": dict
+            }
+            # Type check
+            if expected_type and not isinstance(value, type_map.get(expected_type, object)):
+                return False, None, f"Field '{key}' expected {expected_type}"
+
+            # String validations
+            if expected_type == "string" and isinstance(value, str):
+                if "minLength" in rules and len(value) < rules["minLength"]:
+                    return False, None, f"Field '{key}' must be at least {rules['minLength']} characters"
+                if "maxLength" in rules and len(value) > rules["maxLength"]:
+                    return False, None, f"Field '{key}' must be at most {rules['maxLength']} characters"
+                if "pattern" in rules:
+                    import re
+                    if not re.match(rules["pattern"], value):
+                        return False, None, f"Field '{key}' does not match required pattern"
+                if "enum" in rules and value not in rules["enum"]:
+                    return False, None, f"Field '{key}' must be one of: {rules['enum']}"
+
+            # Number validations
+            if expected_type in ("integer", "number") and isinstance(value, (int, float)):
+                if "minimum" in rules and value < rules["minimum"]:
+                    return False, None, f"Field '{key}' must be at least {rules['minimum']}"
+                if "maximum" in rules and value > rules["maximum"]:
+                    return False, None, f"Field '{key}' must be at most {rules['maximum']}"
+
+            # Array validations
+            if expected_type == "array" and isinstance(value, list):
+                if "minItems" in rules and len(value) < rules["minItems"]:
+                    return False, None, f"Field '{key}' must have at least {rules['minItems']} items"
+                if "maxItems" in rules and len(value) > rules["maxItems"]:
+                    return False, None, f"Field '{key}' must have at most {rules['maxItems']} items"
+
         return True, parsed, "OK"
     except json.JSONDecodeError as e:
         return False, None, f"Invalid JSON: {str(e)}"
