@@ -464,3 +464,41 @@ async def fire_webhooks(status: str, schema_id: str, run_data: dict):
                 )
         except Exception:
             pass  # Never let webhook failures break validation
+
+@app.get("/runs/export")
+async def export_runs_csv():
+    from fastapi.responses import StreamingResponse
+    import csv
+    import io
+
+    runs = await db_select("validation_runs", "?order=created_at.desc")
+    schemas = await db_select("schemas")
+    schema_map = {s["id"]: s["name"] for s in schemas}
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow([
+        "run_id", "schema_name", "status", "reason",
+        "model_used", "latency_ms", "created_at"
+    ])
+
+    # Data rows
+    for run in runs:
+        writer.writerow([
+            run.get("id", ""),
+            schema_map.get(run.get("schema_id", ""), "Unknown"),
+            run.get("status", ""),
+            run.get("validated_output") or "",
+            run.get("model_used", ""),
+            run.get("latency_ms", ""),
+            run.get("created_at", "")
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=iron-thread-runs.csv"}
+    )
