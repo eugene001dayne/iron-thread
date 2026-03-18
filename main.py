@@ -39,6 +39,13 @@ class BatchValidateRequest(BaseModel):
     ai_outputs: list[str]
     model_used: Optional[str] = "unknown"
 
+class WebhookCreate(BaseModel):
+    url: str
+    name: str
+    on_failure: bool = True
+    on_success: bool = False
+    schema_id: Optional[str] = None
+
 class ValidateRequest(BaseModel):
     schema_id: str
     ai_output: str
@@ -137,12 +144,23 @@ async def validate(body: ValidateRequest):
         "model_used": body.model_used
     })
 
+    run_id = run[0]["id"] if run else None
+
+    # Fire webhooks asynchronously
+    await fire_webhooks(status, body.schema_id, {
+        "run_id": run_id,
+        "status": status,
+        "reason": reason,
+        "model_used": body.model_used,
+        "latency_ms": latency
+    })
+
     return {
         "status": status,
         "reason": reason,
         "validated_output": parsed,
         "latency_ms": latency,
-        "run_id": run[0]["id"] if run else None
+        "run_id": run_id
     }
 
 @app.get("/dashboard/stats")
@@ -357,3 +375,62 @@ async def batch_validate(body: BatchValidateRequest):
         "success_rate": round(100 * passed / len(body.ai_outputs), 2),
         "results": results
     }
+
+@app.post("/webhooks")
+async def create_webhook(body: WebhookCreate):
+    result = await db_insert("webhooks", {
+        "name": body.name,
+        "url": body.url,
+        "on_failure": body.on_failure,
+        "on_success": body.on_success,
+        "schema_id": body.schema_id,
+        "active": True
+    })
+    return result
+
+@app.get("/webhooks")
+async def list_webhooks():
+    return await db_select("webhooks")
+
+@app.delete("/webhooks/{webhook_id}")
+async def delete_webhook(webhook_id: str):
+    async with httpx.AsyncClient() as client:
+        r = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/webhooks?id=eq.{webhook_id}",
+            headers=HEADERS
+        )
+    return {"deleted": webhook_id}
+
+async def fire_webhooks(status: str, schema_id: str, run_data: dict):
+    webhooks = await db_select("webhooks", f"?active=eq.true")
+    if not webhooks:
+        return
+
+    for webhook in webhooks:
+        # Check if webhook applies to this schema
+        if webhook.get("schema_id") and webhook["schema_id"] != schema_id:
+            continue
+
+        # Check if webhook should fire for this status
+        if status == "failed" and not webhook["on_failure"]:
+            continue
+        if status == "passed" and not webhook["on_success"]:
+            continue
+
+        # Fire the webhook
+        payload = {
+            "event": f"validation.{status}",
+            "schema_id": schema_id,
+            "run": run_data,
+            "timestamp": time.time()
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    webhook["url"],
+                    json=payload,
+                    timeout=5.0
+                )
+        except Exception:
+            pass  # Never let webhook failures break validation
