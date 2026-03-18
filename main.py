@@ -1,7 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Optional
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import httpx
 import json
 import time
@@ -10,14 +13,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Iron-Thread", version="0.1.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -138,7 +137,8 @@ def root():
     return {"status": "Iron-Thread is running", "version": "0.1.0"}
 
 @app.post("/schemas")
-async def create_schema(body: SchemaCreate):
+@limiter.limit("30/minute")
+async def create_schema(request: Request, body: SchemaCreate):
     result = await db_insert("schemas", {
         "name": body.name,
         "description": body.description,
@@ -151,7 +151,8 @@ async def list_schemas():
     return await db_select("schemas")
 
 @app.post("/validate")
-async def validate(body: ValidateRequest):
+@limiter.limit("60/minute")
+async def validate(request: Request, body: ValidateRequest):
     start = time.time()
 
     schemas = await db_select("schemas", f"?id=eq.{body.schema_id}")
@@ -357,7 +358,8 @@ async def schema_performance():
     return {"schemas": sorted(result, key=lambda x: x["total"], reverse=True)}
 
 @app.post("/validate/batch")
-async def batch_validate(body: BatchValidateRequest):
+@limiter.limit("20/minute")
+async def batch_validate(request: Request, body: BatchValidateRequest):
     schemas = await db_select("schemas", f"?id=eq.{body.schema_id}")
     if not schemas:
         raise HTTPException(status_code=404, detail="Schema not found")
