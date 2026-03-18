@@ -34,6 +34,11 @@ class SchemaCreate(BaseModel):
     description: Optional[str] = None
     schema_definition: dict
 
+class BatchValidateRequest(BaseModel):
+    schema_id: str
+    ai_outputs: list[str]
+    model_used: Optional[str] = "unknown"
+
 class ValidateRequest(BaseModel):
     schema_id: str
     ai_output: str
@@ -302,3 +307,53 @@ async def schema_performance():
         })
 
     return {"schemas": sorted(result, key=lambda x: x["total"], reverse=True)}
+
+@app.post("/validate/batch")
+async def batch_validate(body: BatchValidateRequest):
+    schemas = await db_select("schemas", f"?id=eq.{body.schema_id}")
+    if not schemas:
+        raise HTTPException(status_code=404, detail="Schema not found")
+
+    schema_def = schemas[0]["schema_definition"]
+    
+    results = []
+    passed = 0
+    failed = 0
+
+    for ai_output in body.ai_outputs:
+        start = time.time()
+        is_valid, parsed, reason = validate_against_schema(ai_output, schema_def)
+        latency = int((time.time() - start) * 1000)
+        status = "passed" if is_valid else "failed"
+
+        # Log each run to database
+        run = await db_insert("validation_runs", {
+            "schema_id": body.schema_id,
+            "raw_ai_output": ai_output,
+            "validated_output": parsed,
+            "status": status,
+            "attempts": 1,
+            "latency_ms": latency,
+            "model_used": body.model_used
+        })
+
+        if is_valid:
+            passed += 1
+        else:
+            failed += 1
+
+        results.append({
+            "status": status,
+            "reason": reason,
+            "validated_output": parsed,
+            "latency_ms": latency,
+            "run_id": run[0]["id"] if run else None
+        })
+
+    return {
+        "total": len(body.ai_outputs),
+        "passed": passed,
+        "failed": failed,
+        "success_rate": round(100 * passed / len(body.ai_outputs), 2),
+        "results": results
+    }
