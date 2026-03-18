@@ -502,3 +502,28 @@ async def export_runs_csv():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=iron-thread-runs.csv"}
     )
+
+@app.get("/health")
+async def health_check():
+    start = time.time()
+    
+    # Check database connection
+    db_status = "healthy"
+    db_latency = 0
+    try:
+        db_start = time.time()
+        await db_select("schemas", "?limit=1")
+        db_latency = int((time.time() - db_start) * 1000)
+    except Exception:
+        db_status = "unhealthy"
+
+    latency = int((time.time() - start) * 1000)
+
+    return {
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "version": "0.1.0",
+        "database": db_status,
+        "db_latency_ms": db_latency,
+        "total_latency_ms": latency,
+        "timestamp": time.time()
+    }
