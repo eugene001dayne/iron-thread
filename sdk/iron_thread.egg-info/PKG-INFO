@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: iron-thread
-Version: 0.1.0
+Version: 0.2.0
 Summary: Ruthless middleware that stops broken AI outputs from reaching your database
 License: MIT
 Project-URL: Homepage, https://github.com/eugene001dayne/iron-thread

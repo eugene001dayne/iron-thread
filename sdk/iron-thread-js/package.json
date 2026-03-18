@@ -1,6 +1,6 @@
 {
   "name": "iron-thread",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Ruthless middleware that stops broken AI outputs from reaching your database",
   "main": "index.js",
   "types": "index.d.ts",
