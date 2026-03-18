@@ -167,3 +167,138 @@ async def dashboard_stats():
 @app.get("/runs")
 async def list_runs():
     return await db_select("validation_runs", "?order=created_at.desc&limit=50")
+
+@app.get("/analytics/errors")
+async def error_patterns():
+    runs = await db_select("validation_runs", "?status=eq.failed&order=created_at.desc")
+    if not runs:
+        return {"patterns": [], "total_failures": 0}
+    
+    # Count error patterns
+    error_counts = {}
+    for run in runs:
+        # Get corrections for this run
+        corrections = await db_select("corrections", f"?run_id=eq.{run['id']}")
+        for correction in corrections:
+            reason = correction.get("error_reason", "Unknown error")
+            error_counts[reason] = error_counts.get(reason, 0) + 1
+    
+    # Also count from validation_runs directly
+    all_failed = await db_select("validation_runs", "?status=eq.failed")
+    for run in all_failed:
+        # Extract error from raw output patterns
+        raw = run.get("raw_ai_output", "")
+        if not raw:
+            continue
+        try:
+            json.loads(raw)
+        except json.JSONDecodeError:
+            reason = "Invalid JSON"
+            error_counts[reason] = error_counts.get(reason, 0) + 1
+
+    patterns = [
+        {"reason": k, "count": v, "percentage": round(100 * v / len(all_failed), 2)}
+        for k, v in sorted(error_counts.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    return {
+        "total_failures": len(all_failed),
+        "patterns": patterns
+    }
+
+
+@app.get("/analytics/trends")
+async def trends():
+    runs = await db_select("validation_runs", "?order=created_at.asc")
+    if not runs:
+        return {"trends": []}
+
+    # Group by date
+    from collections import defaultdict
+    daily = defaultdict(lambda: {"passed": 0, "failed": 0, "corrected": 0, "total": 0})
+
+    for run in runs:
+        date = run["created_at"][:10]  # YYYY-MM-DD
+        daily[date]["total"] += 1
+        daily[date][run["status"]] += 1
+
+    trends = []
+    for date, stats in sorted(daily.items()):
+        success_rate = round(100 * (stats["passed"] + stats["corrected"]) / stats["total"], 2)
+        trends.append({
+            "date": date,
+            "total": stats["total"],
+            "passed": stats["passed"],
+            "failed": stats["failed"],
+            "corrected": stats["corrected"],
+            "success_rate": success_rate
+        })
+
+    return {"trends": trends}
+
+
+@app.get("/analytics/models")
+async def model_performance():
+    runs = await db_select("validation_runs", "?order=created_at.desc")
+    if not runs:
+        return {"models": []}
+
+    from collections import defaultdict
+    model_stats = defaultdict(lambda: {"passed": 0, "failed": 0, "corrected": 0, "total": 0, "latencies": []})
+
+    for run in runs:
+        model = run.get("model_used") or "unknown"
+        model_stats[model]["total"] += 1
+        model_stats[model][run["status"]] += 1
+        if run.get("latency_ms"):
+            model_stats[model]["latencies"].append(run["latency_ms"])
+
+    models = []
+    for model, stats in model_stats.items():
+        avg_latency = int(sum(stats["latencies"]) / len(stats["latencies"])) if stats["latencies"] else 0
+        success_rate = round(100 * (stats["passed"] + stats["corrected"]) / stats["total"], 2)
+        models.append({
+            "model": model,
+            "total": stats["total"],
+            "passed": stats["passed"],
+            "failed": stats["failed"],
+            "corrected": stats["corrected"],
+            "success_rate": success_rate,
+            "avg_latency_ms": avg_latency
+        })
+
+    return {"models": sorted(models, key=lambda x: x["total"], reverse=True)}
+
+
+@app.get("/analytics/schemas")
+async def schema_performance():
+    runs = await db_select("validation_runs", "?order=created_at.desc")
+    schemas = await db_select("schemas")
+    if not runs or not schemas:
+        return {"schemas": []}
+
+    schema_map = {s["id"]: s["name"] for s in schemas}
+
+    from collections import defaultdict
+    schema_stats = defaultdict(lambda: {"passed": 0, "failed": 0, "corrected": 0, "total": 0})
+
+    for run in runs:
+        sid = run.get("schema_id")
+        if sid:
+            schema_stats[sid]["total"] += 1
+            schema_stats[sid][run["status"]] += 1
+
+    result = []
+    for sid, stats in schema_stats.items():
+        success_rate = round(100 * (stats["passed"] + stats["corrected"]) / stats["total"], 2)
+        result.append({
+            "schema_id": sid,
+            "schema_name": schema_map.get(sid, "Unknown"),
+            "total": stats["total"],
+            "passed": stats["passed"],
+            "failed": stats["failed"],
+            "corrected": stats["corrected"],
+            "success_rate": success_rate
+        })
+
+    return {"schemas": sorted(result, key=lambda x: x["total"], reverse=True)}
