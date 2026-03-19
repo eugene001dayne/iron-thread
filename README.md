@@ -6,6 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
 [![npm](https://img.shields.io/badge/npm-iron--thread-red.svg)](https://www.npmjs.com/package/iron-thread)
 [![PyPI](https://img.shields.io/badge/pypi-iron--thread-blue.svg)](https://pypi.org/project/iron-thread)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/eugene001dayne/iron-thread)
 
 ## The Problem
 
@@ -41,9 +42,9 @@ schema = it.create_schema(
     schema_definition={
         "required": ["name", "email", "age"],
         "properties": {
-            "name": {"type": "string"},
+            "name": {"type": "string", "minLength": 2},
             "email": {"type": "string"},
-            "age": {"type": "integer"}
+            "age": {"type": "integer", "minimum": 18, "maximum": 100}
         }
     }
 )
@@ -81,38 +82,29 @@ if (result.passed) {
 
 Validate multiple AI outputs in one call:
 ```python
-# Coming in SDK v0.2.0
-# Use the API directly for now
-POST /validate/batch
-{
-  "schema_id": "your-schema-id",
-  "ai_outputs": ["output1", "output2", "output3"],
-  "model_used": "gpt-4"
-}
-```
+results = it.validate_batch(
+    ai_outputs=["output1", "output2", "output3"],
+    schema_id=schema["id"],
+    model_used="gpt-4"
+)
 
-Response:
-```json
-{
-  "total": 3,
-  "passed": 2,
-  "failed": 1,
-  "success_rate": 66.67,
-  "results": [...]
-}
+print(f"{results.passed}/{results.total} passed ({results.success_rate}%)")
+
+for r in results.results:
+    if not r.passed:
+        print(f"Failed: {r.reason}")
 ```
 
 ## Webhook Alerts
 
 Get notified instantly when validation fails:
 ```python
-POST /webhooks
-{
-  "name": "Slack Alert",
-  "url": "https://hooks.slack.com/your-webhook",
-  "on_failure": true,
-  "on_success": false
-}
+it.create_webhook(
+    name="Slack Alert",
+    url="https://hooks.slack.com/your-webhook",
+    on_failure=True,
+    on_success=False
+)
 ```
 
 Iron-Thread fires a POST to your URL with:
@@ -133,31 +125,91 @@ Iron-Thread fires a POST to your URL with:
 
 Connect to Slack, Discord, PagerDuty, or any URL.
 
+## Advanced Validation Types
+```json
+{
+  "properties": {
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 20
+    },
+    "age": {
+      "type": "integer",
+      "minimum": 18,
+      "maximum": 100
+    },
+    "role": {
+      "type": "string",
+      "enum": ["admin", "user", "moderator"]
+    },
+    "email": {
+      "type": "string",
+      "pattern": "^[\\w.-]+@[\\w.-]+\\.\\w+$"
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5
+    }
+  }
+}
+```
+
+## Analytics
+```python
+# Error patterns — why does my AI keep failing?
+it.analytics_errors()
+
+# Trends over time — is my agent getting better?
+it.analytics_trends()
+
+# Which model performs best?
+it.analytics_models()
+
+# Which schemas fail most?
+it.analytics_schemas()
+
+# Export all runs as CSV
+it.export_csv("runs.csv")
+```
+
+## Health Check
+```python
+it.health()
+# {"status": "healthy", "database": "healthy", "db_latency_ms": 45}
+```
+
 ## Features
 
 - ✅ Single and batch JSON schema validation
+- ✅ Advanced types — enum, regex, range, length, array size
 - ✅ Every run logged with latency and model tracking
 - ✅ Live dashboard with real-time stats
 - ✅ Pattern analytics — why does my AI keep failing?
-- ✅ Trends over time — is my agent getting better or worse?
+- ✅ Trends over time — is my agent improving?
 - ✅ Model performance comparison
 - ✅ Schema performance tracking
 - ✅ Webhook alerts on failure or success
+- ✅ CSV export for compliance and auditing
+- ✅ Health check endpoint
+- ✅ Rate limiting
 - ✅ Python SDK + JavaScript SDK
 - 🔜 AI auto-correction loop
-- 🔜 More validation types (regex, enum, range)
-- 🔜 Export runs as CSV
 - 🔜 Per-user API keys
+- 🔜 Multi-tenancy
 
-## API Endpoints
+## All Endpoints
 ```
 GET    /                         → status check
+GET    /health                   → health + db latency
 POST   /schemas                  → create validation schema
 GET    /schemas                  → list all schemas
 POST   /validate                 → validate single AI output
 POST   /validate/batch           → validate multiple outputs
 GET    /dashboard/stats          → overview stats
 GET    /runs                     → recent validation runs
+GET    /runs/export              → download runs as CSV
 GET    /analytics/errors         → most common failure patterns
 GET    /analytics/trends         → success rate over time
 GET    /analytics/models         → performance by AI model
@@ -171,6 +223,16 @@ DELETE /webhooks/{id}            → delete webhook
 
 - API: `https://iron-thread-production.up.railway.app`
 - Docs: `https://iron-thread-production.up.railway.app/docs`
+
+## Self-Hosting
+```bash
+git clone https://github.com/eugene001dayne/iron-thread.git
+cd iron-thread
+pip install -r requirements.txt
+cp .env.example .env
+# Add your Supabase credentials
+python -m uvicorn main:app --reload
+```
 
 ## Stack
 
