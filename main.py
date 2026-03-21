@@ -138,7 +138,7 @@ No explanation, no markdown, no code blocks. Just the raw JSON."""
         except Exception as e:
             return False, None, f"Correction failed: {str(e)}", attempts
 
-    return False, None, f"Could not correct after {max_attempts} attempts", attempts
+    return False, None, f"Could not correct after {max_attempts} attempts: last_output={current_output[:100]}", attempts
 
 # --- Validation logic ---
 def validate_against_schema(output: str, schema: dict) -> tuple[bool, Any, str]:
