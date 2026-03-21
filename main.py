@@ -196,6 +196,13 @@ def validate_against_schema(output: str, schema: dict) -> tuple[bool, Any, str]:
 # --- Routes ---
 @app.get("/")
 def root():
+    @app.get("/debug/env")
+def debug_env():
+    return {
+        "google_key_set": bool(GOOGLE_API_KEY),
+        "google_key_length": len(GOOGLE_API_KEY) if GOOGLE_API_KEY else 0,
+        "gemini_client_ready": gemini_client is not None
+    }
     return {"status": "Iron-Thread is running", "version": "0.1.0"}
 
 @app.post("/schemas")
