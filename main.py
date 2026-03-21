@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Any, Optional, List
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -9,17 +9,24 @@ import httpx
 import json
 import time
 import os
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="Iron-Thread", version="0.1.0")
+app = FastAPI(title="Iron-Thread", version="0.2.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+# Configure Gemini
+gemini_client = None
+if GOOGLE_API_KEY:
+    gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -49,6 +56,7 @@ class ValidateRequest(BaseModel):
     schema_id: str
     ai_output: str
     model_used: Optional[str] = "unknown"
+    auto_correct: bool = False
 
 # --- Supabase helpers ---
 async def db_insert(table: str, data: dict):
@@ -76,6 +84,60 @@ async def db_update(table: str, record_id: str, data: dict):
             json=data
         )
         return r.json()
+
+# --- AI Auto-Correction ---
+async def auto_correct(ai_output: str, schema: dict, error_reason: str, max_attempts: int = 2) -> tuple[bool, Any, str, int]:
+    if not GOOGLE_API_KEY:
+        return False, None, "No AI key configured", 0
+
+    attempts = 0
+    current_output = ai_output
+
+    for attempt in range(max_attempts):
+        attempts += 1
+        try:
+            prompt = f"""You are a JSON correction assistant. 
+            
+The following JSON output failed validation:
+{current_output}
+
+Validation error: {error_reason}
+
+Required schema:
+{json.dumps(schema, indent=2)}
+
+Return ONLY a corrected JSON object that passes validation. 
+No explanation, no markdown, no code blocks. Just the raw JSON."""
+
+            response = gemini_client.models.generate_content(
+                model="models/gemini-2.0-flash-lite",
+                contents=prompt
+            )
+            corrected = response.text.strip()
+            
+            # Clean up any markdown the model might add
+            # Aggressive cleanup of any markdown or extra text
+            corrected = corrected.replace("```json", "").replace("```", "").strip()
+            # Extract just the JSON object if there's extra text
+            json_match = re.search(r'\{.*\}', corrected, re.DOTALL)
+            if json_match:
+                corrected = json_match.group(0).strip()
+            
+                
+            # Validate the correction
+            # validate inline
+            is_valid, parsed, reason = validate_against_schema(corrected, schema)
+
+            if is_valid:
+                return True, parsed, "OK", attempts
+            else:
+                current_output = corrected
+                error_reason = reason
+
+        except Exception as e:
+            return False, None, f"Correction failed: {str(e)}", attempts
+
+    return False, None, f"Could not correct after {max_attempts} attempts", attempts
 
 # --- Validation logic ---
 def validate_against_schema(output: str, schema: dict) -> tuple[bool, Any, str]:
@@ -164,34 +226,78 @@ async def validate(request: Request, body: ValidateRequest):
     latency = int((time.time() - start) * 1000)
 
     status = "passed" if is_valid else "failed"
+    attempts = 1
+    corrected_output = parsed
 
-    run = await db_insert("validation_runs", {
-        "schema_id": body.schema_id,
-        "raw_ai_output": body.ai_output,
-        "validated_output": parsed,
-        "status": status,
-        "attempts": 1,
-        "latency_ms": latency,
-        "model_used": body.model_used
-    })
+    # Auto-correction if failed and AI key available
+    if not is_valid and GOOGLE_API_KEY and body.auto_correct:
+        success, corrected, correction_reason, correction_attempts = await auto_correct(
+            body.ai_output, schema_def, reason
+        )
+        attempts = correction_attempts + 1
+        if success:
+            status = "corrected"
+            corrected_output = corrected
+            reason = "Auto-corrected by Gemini"
+            
+            # Log correction attempt
+            run = await db_insert("validation_runs", {
+                "schema_id": body.schema_id,
+                "raw_ai_output": body.ai_output,
+                "validated_output": corrected_output,
+                "status": status,
+                "attempts": attempts,
+                "latency_ms": int((time.time() - start) * 1000),
+                "model_used": body.model_used
+            })
+            
+            await db_insert("corrections", {
+                "run_id": run[0]["id"] if run else None,
+                "attempt_number": correction_attempts,
+                "failed_output": body.ai_output,
+                "corrected_output": corrected_output,
+                "error_reason": reason
+            })
+        else:
+            run = await db_insert("validation_runs", {
+                "schema_id": body.schema_id,
+                "raw_ai_output": body.ai_output,
+                "validated_output": None,
+                "status": "failed",
+                "attempts": attempts,
+                "latency_ms": int((time.time() - start) * 1000),
+                "model_used": body.model_used
+            })
+    else:
+        run = await db_insert("validation_runs", {
+            "schema_id": body.schema_id,
+            "raw_ai_output": body.ai_output,
+            "validated_output": corrected_output,
+            "status": status,
+            "attempts": attempts,
+            "latency_ms": int((time.time() - start) * 1000),
+            "model_used": body.model_used
+        })
 
     run_id = run[0]["id"] if run else None
 
-    # Fire webhooks asynchronously
+    # Fire webhooks
     await fire_webhooks(status, body.schema_id, {
         "run_id": run_id,
         "status": status,
         "reason": reason,
         "model_used": body.model_used,
-        "latency_ms": latency
+        "latency_ms": int((time.time() - start) * 1000)
     })
 
     return {
         "status": status,
         "reason": reason,
-        "validated_output": parsed,
-        "latency_ms": latency,
-        "run_id": run_id
+        "validated_output": corrected_output,
+        "latency_ms": int((time.time() - start) * 1000),
+        "attempts": attempts,
+        "run_id": run_id,
+        "auto_corrected": status == "corrected"
     }
 
 @app.get("/dashboard/stats")
