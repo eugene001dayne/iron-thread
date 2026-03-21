@@ -5,6 +5,7 @@ from typing import Any, Optional, List
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import re
 import httpx
 import json
 import time
@@ -196,14 +197,15 @@ def validate_against_schema(output: str, schema: dict) -> tuple[bool, Any, str]:
 # --- Routes ---
 @app.get("/")
 def root():
-    @app.get("/debug/env")
+    return {"status": "Iron-Thread is running", "version": "0.2.0"}
+
+@app.get("/debug/env")
 def debug_env():
     return {
         "google_key_set": bool(GOOGLE_API_KEY),
         "google_key_length": len(GOOGLE_API_KEY) if GOOGLE_API_KEY else 0,
         "gemini_client_ready": gemini_client is not None
     }
-    return {"status": "Iron-Thread is running", "version": "0.1.0"}
 
 @app.post("/schemas")
 @limiter.limit("30/minute")
