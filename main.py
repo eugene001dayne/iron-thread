@@ -199,14 +199,6 @@ def validate_against_schema(output: str, schema: dict) -> tuple[bool, Any, str]:
 def root():
     return {"status": "Iron-Thread is running", "version": "0.2.0"}
 
-@app.get("/debug/env")
-def debug_env():
-    return {
-        "google_key_set": bool(GOOGLE_API_KEY),
-        "google_key_length": len(GOOGLE_API_KEY) if GOOGLE_API_KEY else 0,
-        "gemini_client_ready": gemini_client is not None
-    }
-
 @app.post("/schemas")
 @limiter.limit("30/minute")
 async def create_schema(request: Request, body: SchemaCreate):
