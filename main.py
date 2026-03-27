@@ -111,7 +111,7 @@ Return ONLY a corrected JSON object that passes validation.
 No explanation, no markdown, no code blocks. Just the raw JSON."""
 
             response = gemini_client.models.generate_content(
-                model="models/gemini-2.0-flash-lite",
+                model="models/gemini-2.5-flash",
                 contents=prompt
             )
             corrected = response.text.strip()
