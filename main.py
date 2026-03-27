@@ -269,7 +269,6 @@ async def validate(request: Request, body: ValidateRequest):
                 "latency_ms": int((time.time() - start) * 1000),
                 "model_used": body.model_used
             })
-            reason = correction_reason
     else:
         run = await db_insert("validation_runs", {
             "schema_id": body.schema_id,
