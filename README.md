@@ -223,6 +223,7 @@ DELETE /webhooks/{id}            → delete webhook
 
 - API: `https://iron-thread-production.up.railway.app`
 - Docs: `https://iron-thread-production.up.railway.app/docs`
+- Dashboard: `https://iron-thread-dashboard.lovable.app`
 
 ## Self-Hosting
 ```bash
