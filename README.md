@@ -1,42 +1,24 @@
-# Iron-Thread ⚡
+# Iron-Thread
 
-> The ruthless middleware that stops broken AI outputs from reaching your database — and tells you exactly why they keep failing.
+The middleware that stops broken AI outputs from hitting your database — and tells you why they keep failing.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
-[![npm](https://img.shields.io/badge/npm-iron--thread-red.svg)](https://www.npmjs.com/package/iron-thread)
-[![PyPI](https://img.shields.io/badge/pypi-iron--thread-blue.svg)](https://pypi.org/project/iron-thread)
-[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/eugene001dayne/iron-thread)
+You're hooking AI agents straight to your database. Works fine until the AI decides to send you a paragraph of chit-chat instead of JSON, forgets a required field, makes up a number, or hands you a string when you asked for an integer.
 
-## The Problem
+Then your automation crashes, your database ends up with garbage, and you lose an hour debugging.
 
-You're chaining AI agents to your database. It's working great — until the AI returns:
+Iron-Thread sits between your AI model and your database. It checks every output against a schema. Good data passes through. Bad data gets blocked, logged, and can trigger a webhook.
 
-- Conversational text instead of JSON
-- Missing required fields
-- Wrong data types
-- Hallucinated values
+## Quick start
 
-Your automation crashes. Your database gets dirty data. You waste hours debugging.
-
-## The Solution
-
-Iron-Thread sits between your AI model and your database as a ruthless checkpoint:
-```
-AI Output → Iron-Thread → ✅ Clean Data → Your Database
-                        → ❌ Blocked + Logged → Webhook Alert
-```
-
-## Quick Start
 ```bash
 pip install iron-thread
 ```
+
 ```python
 from ironthread import IronThread
 
 it = IronThread()
 
-# Create a schema
 schema = it.create_schema(
     name="User Profile",
     schema_definition={
@@ -49,7 +31,6 @@ schema = it.create_schema(
     }
 )
 
-# Validate single output
 result = it.validate(
     ai_output='{"name": "John", "email": "john@example.com", "age": 28}',
     schema_id=schema["id"]
@@ -61,10 +42,12 @@ else:
     print(f"Blocked — {result.reason}")
 ```
 
-## JavaScript / Node.js
+Same thing works in Node.js:
+
 ```bash
 npm install iron-thread
 ```
+
 ```javascript
 const { IronThread } = require('iron-thread');
 const it = new IronThread();
@@ -78,9 +61,10 @@ if (result.passed) {
 }
 ```
 
-## Batch Validation
+## Batch validation
 
-Validate multiple AI outputs in one call:
+Validate multiple outputs in one call:
+
 ```python
 results = it.validate_batch(
     ai_outputs=["output1", "output2", "output3"],
@@ -95,9 +79,10 @@ for r in results.results:
         print(f"Failed: {r.reason}")
 ```
 
-## Webhook Alerts
+## Webhook alerts
 
-Get notified instantly when validation fails:
+Get notified the moment validation fails:
+
 ```python
 it.create_webhook(
     name="Slack Alert",
@@ -107,7 +92,8 @@ it.create_webhook(
 )
 ```
 
-Iron-Thread fires a POST to your URL with:
+Iron-Thread sends a POST to your URL with a payload like this:
+
 ```json
 {
   "event": "validation.failed",
@@ -123,9 +109,10 @@ Iron-Thread fires a POST to your URL with:
 }
 ```
 
-Connect to Slack, Discord, PagerDuty, or any URL.
+Hook it up to Slack, Discord, PagerDuty — anything that accepts webhooks.
 
-## Advanced Validation Types
+## Advanced validation
+
 ```json
 {
   "properties": {
@@ -157,49 +144,50 @@ Connect to Slack, Discord, PagerDuty, or any URL.
 ```
 
 ## Analytics
+
 ```python
-# Error patterns — why does my AI keep failing?
+# Most common failure reasons
 it.analytics_errors()
 
-# Trends over time — is my agent getting better?
+# Success rate over time
 it.analytics_trends()
 
 # Which model performs best?
 it.analytics_models()
 
-# Which schemas fail most?
+# Which schemas fail the most?
 it.analytics_schemas()
 
-# Export all runs as CSV
+# Export everything as CSV
 it.export_csv("runs.csv")
 ```
 
-## Health Check
+## Health check
+
 ```python
 it.health()
 # {"status": "healthy", "database": "healthy", "db_latency_ms": 45}
 ```
 
-## Features
+## What it does
 
-- ✅ Single and batch JSON schema validation
-- ✅ Advanced types — enum, regex, range, length, array size
-- ✅ Every run logged with latency and model tracking
-- ✅ Live dashboard with real-time stats
-- ✅ Pattern analytics — why does my AI keep failing?
-- ✅ Trends over time — is my agent improving?
-- ✅ Model performance comparison
-- ✅ Schema performance tracking
-- ✅ Webhook alerts on failure or success
-- ✅ CSV export for compliance and auditing
-- ✅ Health check endpoint
-- ✅ Rate limiting
-- ✅ Python SDK + JavaScript SDK
-- 🔜 AI auto-correction loop
-- 🔜 Per-user API keys
-- 🔜 Multi-tenancy
+- Single and batch JSON schema validation
+- Advanced types — enum, regex, range, length, array size
+- Logs every run with latency and model name
+- Live dashboard with real-time stats
+- Pattern analytics — why does your AI keep failing?
+- Trends over time — is your agent improving?
+- Model performance comparison
+- Schema performance tracking
+- Webhook alerts on failure or success
+- CSV export for compliance and auditing
+- Health check endpoint
+- Rate limiting
+- Python SDK + JavaScript SDK
+- Coming later: AI auto-correction loop, per-user API keys, multi-tenancy
 
-## All Endpoints
+## API endpoints
+
 ```
 GET    /                         → status check
 GET    /health                   → health + db latency
@@ -219,13 +207,14 @@ GET    /webhooks                 → list webhooks
 DELETE /webhooks/{id}            → delete webhook
 ```
 
-## Live Demo
+## Live demo
 
 - API: `https://iron-thread-production.up.railway.app`
 - Docs: `https://iron-thread-production.up.railway.app/docs`
 - Dashboard: `https://iron-thread-dashboard.lovable.app`
 
-## Self-Hosting
+## Self-hosting
+
 ```bash
 git clone https://github.com/eugene001dayne/iron-thread.git
 cd iron-thread
@@ -237,24 +226,23 @@ python -m uvicorn main:app --reload
 
 ## Stack
 
-- **Backend:** FastAPI + Python
-- **Database:** Supabase (PostgreSQL)
-- **Dashboard:** React (Lovable)
-- **Deployment:** Railway
+- Backend: FastAPI + Python
+- Database: Supabase (PostgreSQL)
+- Dashboard: React (Lovable)
+- Deployment: Railway
 
-## The Thread Suite
+## Part of the Thread Suite
 
-Part of the Thread Suite — Iron-Thread · Test-Thread · Prompt-Thread
+Iron-Thread · Test-Thread · Prompt-Thread .Chain-Thread
 
 ## Contributing
 
-PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT — free to use, modify, and distribute.
+MIT — use it, break it, fix it, ship it.
 
 ---
 
-Built for the age of AI agents.
-Star ⭐ if Iron-Thread saves you from dirty data.
+Built for the age of AI agents. Star this repo if it saves you from dirty data.
