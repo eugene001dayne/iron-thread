@@ -1,181 +1,169 @@
 import httpx
 import json
-from typing import Any, Optional, List
-from dataclasses import dataclass
+from typing import Optional, Any
+
+RENDER_URL = "https://iron-thread.onrender.com"
 
 
-@dataclass
 class ValidationResult:
-    passed: bool
-    status: str
-    reason: str
-    data: Any
-    latency_ms: int
-    run_id: Optional[str] = None
+    def __init__(self, data: dict):
+        self.run_id: str = data.get("run_id", "")
+        self.status: str = data.get("status", "")
+        self.passed: bool = data.get("passed", False)
+        self.reason: str = data.get("reason", "")
+        self.data: Any = data.get("data")
+        self.auto_corrected: bool = data.get("auto_corrected", False)
+        self.attempts: int = data.get("attempts", 1)
+        self.latency_ms: Optional[int] = data.get("latency_ms")
+        self.confidence_score: Optional[float] = data.get("confidence_score")
+        self.confidence_flags: list = data.get("confidence_flags", [])
+        self._raw = data
+
+    def __repr__(self):
+        return f"ValidationResult(status={self.status}, passed={self.passed}, confidence={self.confidence_score})"
 
 
-@dataclass
 class BatchValidationResult:
-    total: int
-    passed: int
-    failed: int
-    success_rate: float
-    results: List[ValidationResult]
+    def __init__(self, data: dict):
+        self.total: int = data.get("total", 0)
+        self.passed: int = data.get("passed", 0)
+        self.corrected: int = data.get("corrected", 0)
+        self.failed: int = data.get("failed", 0)
+        self.success_rate: float = data.get("success_rate", 0.0)
+        self.results: list[ValidationResult] = [ValidationResult(r) for r in data.get("results", [])]
+        self._raw = data
+
+    def __repr__(self):
+        return f"BatchValidationResult(total={self.total}, passed={self.passed}, failed={self.failed}, success_rate={self.success_rate}%)"
 
 
 class IronThread:
-    def __init__(self, host: str = "https://iron-thread-production.up.railway.app"):
-        self.host = host.rstrip("/")
+    def __init__(self, base_url: str = RENDER_URL):
+        self.base_url = base_url.rstrip("/")
+        self._client = httpx.Client(base_url=self.base_url, timeout=30.0)
 
-    def create_schema(self, name: str, schema_definition: dict, description: str = "") -> dict:
-        with httpx.Client() as client:
-            r = client.post(
-                f"{self.host}/schemas",
-                json={
-                    "name": name,
-                    "description": description,
-                    "schema_definition": schema_definition
-                }
-            )
-            return r.json()[0]
+    # ── SCHEMAS ──
+
+    def create_schema(self, name: str, schema_definition: dict, description: str = None) -> dict:
+        resp = self._client.post("/schemas", json={
+            "name": name,
+            "schema_definition": schema_definition,
+            "description": description
+        })
+        resp.raise_for_status()
+        return resp.json()
 
     def list_schemas(self) -> list:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/schemas")
-            return r.json()
+        resp = self._client.get("/schemas")
+        resp.raise_for_status()
+        return resp.json()
 
-    def validate(self, ai_output: Any, schema_id: str, model_used: str = "unknown") -> ValidationResult:
-        if not isinstance(ai_output, str):
-            ai_output = json.dumps(ai_output)
+    # ── VALIDATION ──
 
-        with httpx.Client() as client:
-            r = client.post(
-                f"{self.host}/validate",
-                json={
-                    "schema_id": schema_id,
-                    "ai_output": ai_output,
-                    "model_used": model_used
-                }
-            )
-            data = r.json()
+    def validate(self, ai_output: str, schema_id: str, model_used: str = None,
+                 auto_correct: bool = False) -> ValidationResult:
+        resp = self._client.post("/validate", json={
+            "ai_output": ai_output,
+            "schema_id": schema_id,
+            "model_used": model_used,
+            "auto_correct": auto_correct
+        })
+        resp.raise_for_status()
+        return ValidationResult(resp.json())
 
-        return ValidationResult(
-            passed=data["status"] == "passed",
-            status=data["status"],
-            reason=data["reason"],
-            data=data["validated_output"],
-            latency_ms=data["latency_ms"],
-            run_id=data.get("run_id")
-        )
+    def validate_batch(self, ai_outputs: list[str], schema_id: str,
+                       model_used: str = None) -> BatchValidationResult:
+        resp = self._client.post("/validate/batch", json={
+            "ai_outputs": ai_outputs,
+            "schema_id": schema_id,
+            "model_used": model_used
+        })
+        resp.raise_for_status()
+        return BatchValidationResult(resp.json())
 
-    def validate_batch(self, ai_outputs: List[Any], schema_id: str, model_used: str = "unknown") -> BatchValidationResult:
-        outputs = [json.dumps(o) if not isinstance(o, str) else o for o in ai_outputs]
-
-        with httpx.Client() as client:
-            r = client.post(
-                f"{self.host}/validate/batch",
-                json={
-                    "schema_id": schema_id,
-                    "ai_outputs": outputs,
-                    "model_used": model_used
-                }
-            )
-            data = r.json()
-
-        results = [
-            ValidationResult(
-                passed=r["status"] == "passed",
-                status=r["status"],
-                reason=r["reason"],
-                data=r["validated_output"],
-                latency_ms=r["latency_ms"],
-                run_id=r.get("run_id")
-            )
-            for r in data["results"]
-        ]
-
-        return BatchValidationResult(
-            total=data["total"],
-            passed=data["passed"],
-            failed=data["failed"],
-            success_rate=data["success_rate"],
-            results=results
-        )
-
-    def create_webhook(self, name: str, url: str, on_failure: bool = True, on_success: bool = False, schema_id: str = None) -> dict:
-        with httpx.Client() as client:
-            r = client.post(
-                f"{self.host}/webhooks",
-                json={
-                    "name": name,
-                    "url": url,
-                    "on_failure": on_failure,
-                    "on_success": on_success,
-                    "schema_id": schema_id
-                }
-            )
-            return r.json()[0]
-
-    def list_webhooks(self) -> list:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/webhooks")
-            return r.json()
-
-    def delete_webhook(self, webhook_id: str) -> dict:
-        with httpx.Client() as client:
-            r = client.delete(f"{self.host}/webhooks/{webhook_id}")
-            return r.json()
-
-    def stats(self) -> dict:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/dashboard/stats")
-            return r.json()
+    # ── RUNS ──
 
     def runs(self) -> list:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/runs")
-            return r.json()
+        resp = self._client.get("/runs")
+        resp.raise_for_status()
+        return resp.json()
 
-    def health(self) -> dict:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/health")
-            return r.json()
+    def export_csv(self, filename: str = "iron_thread_runs.csv") -> str:
+        resp = self._client.get("/runs/export")
+        resp.raise_for_status()
+        with open(filename, "w") as f:
+            f.write(resp.text)
+        return filename
 
-    def export_csv(self, filepath: str = "iron-thread-runs.csv") -> str:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/runs/export")
-            with open(filepath, "w") as f:
-                f.write(r.text)
-        return filepath
+    # ── v1.2.0: TAMPER-EVIDENT VERIFICATION ──
 
-    def analytics_trends(self) -> dict:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/analytics/trends")
-            return r.json()
+    def verify_run(self, run_id: str) -> dict:
+        """Verify the SHA-256 hash of a single validation run is intact."""
+        resp = self._client.get(f"/runs/{run_id}/verify")
+        resp.raise_for_status()
+        return resp.json()
 
-    def analytics_models(self) -> dict:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/analytics/models")
-            return r.json()
+    def get_schema_chain(self, schema_id: str) -> dict:
+        """Get the full tamper-evident hash chain for a schema."""
+        resp = self._client.get(f"/schemas/{schema_id}/chain")
+        resp.raise_for_status()
+        return resp.json()
 
-    def analytics_schemas(self) -> dict:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/analytics/schemas")
-            return r.json()
+    # ── ANALYTICS ──
+
+    def stats(self) -> dict:
+        resp = self._client.get("/dashboard/stats")
+        resp.raise_for_status()
+        return resp.json()
 
     def analytics_errors(self) -> dict:
-        with httpx.Client() as client:
-            r = client.get(f"{self.host}/analytics/errors")
-            return r.json()
+        resp = self._client.get("/analytics/errors")
+        resp.raise_for_status()
+        return resp.json()
 
+    def analytics_trends(self) -> dict:
+        resp = self._client.get("/analytics/trends")
+        resp.raise_for_status()
+        return resp.json()
 
-# Convenience function for quick use
-_default_client = IronThread()
+    def analytics_models(self) -> dict:
+        resp = self._client.get("/analytics/models")
+        resp.raise_for_status()
+        return resp.json()
 
+    def analytics_schemas(self) -> dict:
+        resp = self._client.get("/analytics/schemas")
+        resp.raise_for_status()
+        return resp.json()
 
-def validate(ai_output: Any, schema_id: str, model_used: str = "unknown") -> ValidationResult:
-    return _default_client.validate(ai_output, schema_id, model_used)
+    # ── WEBHOOKS ──
 
+    def create_webhook(self, name: str, url: str, on_failure: bool = True,
+                       on_success: bool = False, schema_id: str = None) -> dict:
+        resp = self._client.post("/webhooks", json={
+            "name": name,
+            "url": url,
+            "on_failure": on_failure,
+            "on_success": on_success,
+            "schema_id": schema_id
+        })
+        resp.raise_for_status()
+        return resp.json()
 
-def validate_batch(ai_outputs: List[Any], schema_id: str, model_used: str = "unknown") -> BatchValidationResult:
-    return _default_client.validate_batch(ai_outputs, schema_id, model_used)
+    def list_webhooks(self) -> list:
+        resp = self._client.get("/webhooks")
+        resp.raise_for_status()
+        return resp.json()
+
+    def delete_webhook(self, webhook_id: str) -> dict:
+        resp = self._client.delete(f"/webhooks/{webhook_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    def health(self) -> dict:
+        resp = self._client.get("/health")
+        resp.raise_for_status()
+        return resp.json()
+
+    def __repr__(self):
+        return f"IronThread(base_url={self.base_url})"

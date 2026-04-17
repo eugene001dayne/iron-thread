@@ -1,154 +1,120 @@
-const BASE_URL = 'https://iron-thread-production.up.railway.app';
+const fetch = require("node-fetch");
+
+const RENDER_URL = "https://iron-thread.onrender.com";
 
 class IronThread {
-  constructor(host = BASE_URL) {
-    this.host = host.replace(/\/$/, '');
+  constructor(baseUrl = RENDER_URL) {
+    this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
-  async createSchema(name, schemaDefinition, description = '') {
-    const res = await fetch(`${this.host}/schemas`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        description,
-        schema_definition: schemaDefinition
-      })
-    });
-    const data = await res.json();
-    return data[0];
-  }
-
-  async listSchemas() {
-    const res = await fetch(`${this.host}/schemas`);
-    return res.json();
-  }
-
-  async validate(aiOutput, schemaId, modelUsed = 'unknown') {
-    if (typeof aiOutput !== 'string') {
-      aiOutput = JSON.stringify(aiOutput);
+  async _request(method, path, body = null) {
+    const options = {
+      method,
+      headers: { "Content-Type": "application/json" },
+    };
+    if (body) options.body = JSON.stringify(body);
+    const res = await fetch(`${this.baseUrl}${path}`, options);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`IronThread error ${res.status}: ${text}`);
     }
-    const res = await fetch(`${this.host}/validate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        schema_id: schemaId,
-        ai_output: aiOutput,
-        model_used: modelUsed
-      })
+    return res.json();
+  }
+
+  // ── SCHEMAS ──
+
+  createSchema(name, schemaDefinition, description = null) {
+    return this._request("POST", "/schemas", {
+      name,
+      schema_definition: schemaDefinition,
+      description,
     });
-    const data = await res.json();
-    return {
-      passed: data.status === 'passed',
-      status: data.status,
-      reason: data.reason,
-      data: data.validated_output,
-      latencyMs: data.latency_ms,
-      runId: data.run_id
-    };
   }
 
-  async validateBatch(aiOutputs, schemaId, modelUsed = 'unknown') {
-    const outputs = aiOutputs.map(o => typeof o === 'string' ? o : JSON.stringify(o));
-    const res = await fetch(`${this.host}/validate/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        schema_id: schemaId,
-        ai_outputs: outputs,
-        model_used: modelUsed
-      })
+  listSchemas() {
+    return this._request("GET", "/schemas");
+  }
+
+  // ── VALIDATION ──
+
+  validate(aiOutput, schemaId, modelUsed = null, autoCorrect = false) {
+    return this._request("POST", "/validate", {
+      ai_output: aiOutput,
+      schema_id: schemaId,
+      model_used: modelUsed,
+      auto_correct: autoCorrect,
     });
-    const data = await res.json();
-    return {
-      total: data.total,
-      passed: data.passed,
-      failed: data.failed,
-      successRate: data.success_rate,
-      results: data.results.map(r => ({
-        passed: r.status === 'passed',
-        status: r.status,
-        reason: r.reason,
-        data: r.validated_output,
-        latencyMs: r.latency_ms,
-        runId: r.run_id
-      }))
-    };
   }
 
-  async createWebhook(name, url, onFailure = true, onSuccess = false, schemaId = null) {
-    const res = await fetch(`${this.host}/webhooks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        url,
-        on_failure: onFailure,
-        on_success: onSuccess,
-        schema_id: schemaId
-      })
+  validateBatch(aiOutputs, schemaId, modelUsed = null) {
+    return this._request("POST", "/validate/batch", {
+      ai_outputs: aiOutputs,
+      schema_id: schemaId,
+      model_used: modelUsed,
     });
-    const data = await res.json();
-    return data[0];
   }
 
-  async listWebhooks() {
-    const res = await fetch(`${this.host}/webhooks`);
-    return res.json();
+  // ── RUNS ──
+
+  runs() {
+    return this._request("GET", "/runs");
   }
 
-  async deleteWebhook(webhookId) {
-    const res = await fetch(`${this.host}/webhooks/${webhookId}`, {
-      method: 'DELETE'
+  // ── v1.2.0: TAMPER-EVIDENT VERIFICATION ──
+
+  verifyRun(runId) {
+    return this._request("GET", `/runs/${runId}/verify`);
+  }
+
+  getSchemaChain(schemaId) {
+    return this._request("GET", `/schemas/${schemaId}/chain`);
+  }
+
+  // ── ANALYTICS ──
+
+  stats() {
+    return this._request("GET", "/dashboard/stats");
+  }
+
+  analyticsErrors() {
+    return this._request("GET", "/analytics/errors");
+  }
+
+  analyticsTrends() {
+    return this._request("GET", "/analytics/trends");
+  }
+
+  analyticsModels() {
+    return this._request("GET", "/analytics/models");
+  }
+
+  analyticsSchemas() {
+    return this._request("GET", "/analytics/schemas");
+  }
+
+  // ── WEBHOOKS ──
+
+  createWebhook(name, url, onFailure = true, onSuccess = false, schemaId = null) {
+    return this._request("POST", "/webhooks", {
+      name,
+      url,
+      on_failure: onFailure,
+      on_success: onSuccess,
+      schema_id: schemaId,
     });
-    return res.json();
   }
 
-  async stats() {
-    const res = await fetch(`${this.host}/dashboard/stats`);
-    return res.json();
+  listWebhooks() {
+    return this._request("GET", "/webhooks");
   }
 
-  async runs() {
-    const res = await fetch(`${this.host}/runs`);
-    return res.json();
+  deleteWebhook(webhookId) {
+    return this._request("DELETE", `/webhooks/${webhookId}`);
   }
 
-  async health() {
-    const res = await fetch(`${this.host}/health`);
-    return res.json();
-  }
-
-  async analyticsTrends() {
-    const res = await fetch(`${this.host}/analytics/trends`);
-    return res.json();
-  }
-
-  async analyticsModels() {
-    const res = await fetch(`${this.host}/analytics/models`);
-    return res.json();
-  }
-
-  async analyticsSchemas() {
-    const res = await fetch(`${this.host}/analytics/schemas`);
-    return res.json();
-  }
-
-  async analyticsErrors() {
-    const res = await fetch(`${this.host}/analytics/errors`);
-    return res.json();
+  health() {
+    return this._request("GET", "/health");
   }
 }
 
-// Convenience functions
-const _defaultClient = new IronThread();
-
-async function validate(aiOutput, schemaId, modelUsed = 'unknown') {
-  return _defaultClient.validate(aiOutput, schemaId, modelUsed);
-}
-
-async function validateBatch(aiOutputs, schemaId, modelUsed = 'unknown') {
-  return _defaultClient.validateBatch(aiOutputs, schemaId, modelUsed);
-}
-
-module.exports = { IronThread, validate, validateBatch };
+module.exports = { IronThread };

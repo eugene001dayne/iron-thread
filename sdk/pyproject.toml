@@ -1,29 +1,33 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "iron-thread"
-version = "0.2.0"
-description = "Ruthless middleware that stops broken AI outputs from reaching your database"
+version = "0.3.0"
+description = "Open-source middleware that validates AI outputs before they reach your database."
 readme = "README.md"
-license = {text = "MIT"}
-requires-python = ">=3.8"
-dependencies = [
-    "httpx>=0.24.0"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Eugene Dayne Mawuli", email = "bitelance.team@gmail.com"}
 ]
-keywords = ["ai", "validation", "agents", "middleware", "llm"]
+keywords = ["ai", "validation", "middleware", "agents", "llm", "thread-suite"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Intended Audience :: Developers"
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries",
 ]
+requires-python = ">=3.9"
+dependencies = ["httpx>=0.23.0"]
 
 [project.urls]
 Homepage = "https://github.com/eugene001dayne/iron-thread"
-Documentation = "https://iron-thread-production.up.railway.app/docs"
+Documentation = "https://iron-thread.onrender.com/docs"
 Repository = "https://github.com/eugene001dayne/iron-thread"
 
 [tool.setuptools.packages.find]

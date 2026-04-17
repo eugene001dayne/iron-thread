@@ -1,27 +1,17 @@
 {
   "name": "iron-thread",
-  "version": "0.2.0",
-  "description": "Ruthless middleware that stops broken AI outputs from reaching your database",
+  "version": "0.3.0",
+  "description": "Open-source middleware that validates AI outputs before they reach your database.",
   "main": "index.js",
-  "types": "index.d.ts",
-  "scripts": {
-    "test": "node test.js"
-  },
-  "keywords": [
-    "ai",
-    "validation",
-    "agents",
-    "middleware",
-    "llm",
-    "openai",
-    "claude"
-  ],
+  "keywords": ["ai", "validation", "middleware", "agents", "llm", "thread-suite"],
   "author": "Eugene Dayne Mawuli",
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/eugene001dayne/iron-thread",
   "repository": {
     "type": "git",
     "url": "https://github.com/eugene001dayne/iron-thread"
   },
-  "homepage": "https://github.com/eugene001dayne/iron-thread",
-  "dependencies": {}
+  "dependencies": {
+    "node-fetch": "^2.6.9"
+  }
 }
