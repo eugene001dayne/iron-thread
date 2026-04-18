@@ -1,248 +1,238 @@
 # Iron-Thread
 
-The middleware that stops broken AI outputs from hitting your database — and tells you why they keep failing.
+**Open-source middleware that validates AI outputs before they reach your database.**
 
-You're hooking AI agents straight to your database. Works fine until the AI decides to send you a paragraph of chit-chat instead of JSON, forgets a required field, makes up a number, or hands you a string when you asked for an integer.
+[![PyPI version](https://badge.fury.io/py/iron-thread.svg)](https://pypi.org/project/iron-thread/)
+[![npm version](https://badge.fury.io/js/iron-thread.svg)](https://www.npmjs.com/package/iron-thread)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Part of Thread Suite](https://img.shields.io/badge/Thread%20Suite-Iron--Thread-black)](https://github.com/eugene001dayne)
 
-Then your automation crashes, your database ends up with garbage, and you lose an hour debugging.
+---
 
-Iron-Thread sits between your AI model and your database. It checks every output against a schema. Good data passes through. Bad data gets blocked, logged, and can trigger a webhook.
+## The problem
 
-## Quick start
+When you chain an AI model to a database, the AI eventually returns broken output. Wrong types. Missing fields. Hallucinated values that look plausible but aren't valid. Your automation crashes. Your database gets dirty data. You find out when something downstream breaks — not before.
 
+There was no clean, lightweight, open-source checkpoint for this. Iron-Thread is that checkpoint.
+
+```
+AI Output → Iron-Thread → ✅ Clean Data → Database
+                        → ❌ Blocked + Logged → Auto-Correction → Retry
+```
+
+---
+
+## What it does
+
+- **Validates** AI output against a JSON schema before it touches your database
+- **Blocks** outputs that fail — wrong types, missing fields, out-of-range values, bad patterns
+- **Auto-corrects** failed outputs using Google Gemini and retries validation
+- **Scores** content reliability — flags statistically anomalous values that pass schema but look wrong
+- **Chains** every run into a tamper-evident SHA-256 audit trail
+- **Logs** everything — every run, every correction, every failure
+- **Alerts** via webhooks when validation fails
+- **Analyzes** failure patterns, trends, and performance by model and schema
+
+---
+
+## Install
+
+**Python**
 ```bash
 pip install iron-thread
 ```
 
-```python
-from ironthread import IronThread
-
-it = IronThread()
-
-schema = it.create_schema(
-    name="User Profile",
-    schema_definition={
-        "required": ["name", "email", "age"],
-        "properties": {
-            "name": {"type": "string", "minLength": 2},
-            "email": {"type": "string"},
-            "age": {"type": "integer", "minimum": 18, "maximum": 100}
-        }
-    }
-)
-
-result = it.validate(
-    ai_output='{"name": "John", "email": "john@example.com", "age": 28}',
-    schema_id=schema["id"]
-)
-
-if result.passed:
-    print("Clean — safe to send to database")
-else:
-    print(f"Blocked — {result.reason}")
-```
-
-Same thing works in Node.js:
-
+**JavaScript**
 ```bash
 npm install iron-thread
 ```
 
+---
+
+## Quickstart
+
+**Python**
+```python
+from ironthread import IronThread
+
+it = IronThread()  # points to https://iron-thread.onrender.com
+
+# Define your schema
+schema = it.create_schema("User Profile", {
+    "required": ["name", "email", "age"],
+    "properties": {
+        "name": {"type": "string", "minLength": 2},
+        "email": {"type": "string"},
+        "age": {"type": "integer", "minimum": 18, "maximum": 100},
+        "role": {"type": "string", "enum": ["admin", "user"]}
+    }
+})
+
+# Validate AI output
+result = it.validate(ai_output, schema["id"], model_used="gpt-4")
+
+print(result.status)           # "passed", "failed", or "corrected"
+print(result.confidence_score) # 0.0–1.0 — how reliable the content looks
+print(result.confidence_flags) # fields that look statistically anomalous
+```
+
+**Auto-correction**
+```python
+result = it.validate(ai_output, schema["id"], auto_correct=True)
+
+print(result.auto_corrected)  # True if Gemini fixed it
+print(result.attempts)        # 1 or 2
+```
+
+**Batch validation**
+```python
+batch = it.validate_batch(["output1", "output2", "output3"], schema["id"])
+
+print(batch.success_rate)  # e.g. 66.67
+print(batch.failed)        # 1
+```
+
+**JavaScript**
 ```javascript
 const { IronThread } = require('iron-thread');
 const it = new IronThread();
 
 const result = await it.validate(aiOutput, schemaId, 'gpt-4');
-
-if (result.passed) {
-  await db.save(result.data);
-} else {
-  console.log(`Rejected: ${result.reason}`);
-}
+console.log(result.status);
+console.log(result.confidence_score);
 ```
 
-## Batch validation
+---
 
-Validate multiple outputs in one call:
+## Validation types
+
+| Constraint | Property | Example |
+|-----------|----------|---------|
+| Required fields | `"required": [...]` | `"required": ["name", "email"]` |
+| String | `"type": "string"` | any string |
+| Integer | `"type": "integer"` | whole numbers only |
+| Number | `"type": "number"` | int or float |
+| Boolean | `"type": "boolean"` | true/false |
+| Array | `"type": "array"` | list |
+| Object | `"type": "object"` | nested object |
+| Min length | `"minLength": 3` | string at least 3 chars |
+| Max length | `"maxLength": 100` | string at most 100 chars |
+| Minimum value | `"minimum": 18` | number >= 18 |
+| Maximum value | `"maximum": 100` | number <= 100 |
+| Enum | `"enum": ["a","b","c"]` | value must be one of these |
+| Pattern | `"pattern": "^[a-z]+$"` | must match regex |
+| Min items | `"minItems": 1` | array >= 1 items |
+| Max items | `"maxItems": 5` | array <= 5 items |
+
+---
+
+## Confidence scoring
+
+Iron-Thread doesn't just check structure — it scores content reliability. After a run passes validation, a second pass compares values against the statistical history of past runs for that schema.
+
+- **Numeric fields** — flags values beyond 3 standard deviations from the historical mean
+- **String fields** — flags lengths beyond 3 standard deviations from historical mean length
+- **Enum fields** — flags values that have never appeared before in past runs
+
+Returns `confidence_score` (0.0–1.0) and `confidence_flags` (list of anomalous fields). Activates automatically after 10 passing runs. No AI needed — fully deterministic.
 
 ```python
-results = it.validate_batch(
-    ai_outputs=["output1", "output2", "output3"],
-    schema_id=schema["id"],
-    model_used="gpt-4"
-)
+result = it.validate(ai_output, schema["id"])
 
-print(f"{results.passed}/{results.total} passed ({results.success_rate}%)")
-
-for r in results.results:
-    if not r.passed:
-        print(f"Failed: {r.reason}")
+if result.confidence_score < 0.8:
+    print("Anomalous fields:", result.confidence_flags)
+    # flag for human review
 ```
 
-## Webhook alerts
+---
 
-Get notified the moment validation fails:
+## Tamper-evident audit trail
+
+Every validation run is hashed with SHA-256 at write time. Each hash incorporates the previous run's hash, creating a verifiable chain. Any tampering with any historical run breaks all subsequent links.
+
+```python
+# Verify a single run
+verify = it.verify_run(result.run_id)
+print(verify["verified"])  # True or False
+
+# Verify the full chain for a schema
+chain = it.get_schema_chain(schema["id"])
+print(chain["chain_verified"])  # True or False
+```
+
+Hand the chain endpoint response to a regulator. The math speaks for itself.
+
+---
+
+## Webhooks
 
 ```python
 it.create_webhook(
-    name="Slack Alert",
+    name="Slack alert",
     url="https://hooks.slack.com/your-webhook",
     on_failure=True,
     on_success=False
 )
 ```
 
-Iron-Thread sends a POST to your URL with a payload like this:
+Fires a POST with run details whenever validation fails.
 
-```json
-{
-  "event": "validation.failed",
-  "schema_id": "...",
-  "run": {
-    "run_id": "...",
-    "status": "failed",
-    "reason": "Missing required field: email",
-    "model_used": "gpt-4",
-    "latency_ms": 234
-  },
-  "timestamp": 1234567890
-}
-```
-
-Hook it up to Slack, Discord, PagerDuty — anything that accepts webhooks.
-
-## Advanced validation
-
-```json
-{
-  "properties": {
-    "username": {
-      "type": "string",
-      "minLength": 3,
-      "maxLength": 20
-    },
-    "age": {
-      "type": "integer",
-      "minimum": 18,
-      "maximum": 100
-    },
-    "role": {
-      "type": "string",
-      "enum": ["admin", "user", "moderator"]
-    },
-    "email": {
-      "type": "string",
-      "pattern": "^[\\w.-]+@[\\w.-]+\\.\\w+$"
-    },
-    "tags": {
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 5
-    }
-  }
-}
-```
+---
 
 ## Analytics
 
 ```python
-# Most common failure reasons
-it.analytics_errors()
-
-# Success rate over time
-it.analytics_trends()
-
-# Which model performs best?
-it.analytics_models()
-
-# Which schemas fail the most?
-it.analytics_schemas()
-
-# Export everything as CSV
-it.export_csv("runs.csv")
+it.stats()              # overview — totals, success rate, avg confidence
+it.analytics_errors()   # failure patterns by schema
+it.analytics_trends()   # success rate over time
+it.analytics_models()   # performance by AI model
+it.analytics_schemas()  # performance by schema
+it.export_csv()         # download full run history
 ```
-
-## Health check
-
-```python
-it.health()
-# {"status": "healthy", "database": "healthy", "db_latency_ms": 45}
-```
-
-## What it does
-
-- Single and batch JSON schema validation
-- Advanced types — enum, regex, range, length, array size
-- Logs every run with latency and model name
-- Live dashboard with real-time stats
-- Pattern analytics — why does your AI keep failing?
-- Trends over time — is your agent improving?
-- Model performance comparison
-- Schema performance tracking
-- Webhook alerts on failure or success
-- CSV export for compliance and auditing
-- Health check endpoint
-- Rate limiting
-- Python SDK + JavaScript SDK
-- Coming later: AI auto-correction loop, per-user API keys, multi-tenancy
-
-## API endpoints
-
-```
-GET    /                         → status check
-GET    /health                   → health + db latency
-POST   /schemas                  → create validation schema
-GET    /schemas                  → list all schemas
-POST   /validate                 → validate single AI output
-POST   /validate/batch           → validate multiple outputs
-GET    /dashboard/stats          → overview stats
-GET    /runs                     → recent validation runs
-GET    /runs/export              → download runs as CSV
-GET    /analytics/errors         → most common failure patterns
-GET    /analytics/trends         → success rate over time
-GET    /analytics/models         → performance by AI model
-GET    /analytics/schemas        → performance by schema
-POST   /webhooks                 → create webhook alert
-GET    /webhooks                 → list webhooks
-DELETE /webhooks/{id}            → delete webhook
-```
-
-## Live demo
-
-- API: `https://iron-thread-production.up.railway.app`
-- Docs: `https://iron-thread-production.up.railway.app/docs`
-- Dashboard: `https://iron-thread-dashboard.lovable.app`
-
-## Self-hosting
-
-```bash
-git clone https://github.com/eugene001dayne/iron-thread.git
-cd iron-thread
-pip install -r requirements.txt
-cp .env.example .env
-# Add your Supabase credentials
-python -m uvicorn main:app --reload
-```
-
-## Stack
-
-- Backend: FastAPI + Python
-- Database: Supabase (PostgreSQL)
-- Dashboard: React (Lovable)
-- Deployment: Railway
-
-## Part of the Thread Suite
-
-Iron-Thread · Test-Thread · Prompt-Thread .Chain-Thread
-
-## Contributing
-
-Pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-MIT — use it, break it, fix it, ship it.
 
 ---
 
-Built for the age of AI agents. Star this repo if it saves you from dirty data.
+## Self-hosted API
+
+The Iron-Thread API is open source. Deploy your own instance:
+
+```bash
+git clone https://github.com/eugene001dayne/iron-thread
+cd iron-thread
+pip install -r requirements.txt
+
+# Set environment variables
+SUPABASE_URL=your_url
+SUPABASE_KEY=your_key
+GOOGLE_API_KEY=your_key  # for auto-correction
+
+python -m uvicorn main:app --reload
+```
+
+Live hosted API: `https://iron-thread.onrender.com`
+API docs: `https://iron-thread.onrender.com/docs`
+
+---
+
+## Part of the Thread Suite
+
+Iron-Thread is one of five open-source tools in the Thread Suite — the reliability layer for AI agents.
+
+| Tool | What it does |
+|------|-------------|
+| **Iron-Thread** | Validates AI output structure before your database |
+| **TestThread** | Tests whether your agent behaves correctly |
+| **PromptThread** | Versions prompts and tracks performance over time |
+| **ChainThread** | Verifies and governs agent-to-agent handoffs |
+| **PolicyThread** | Monitors production AI against compliance rules |
+
+---
+
+## License
+
+Apache 2.0 — free to use, modify, and distribute.
+
+---
+
+*Built by [Eugene Dayne Mawuli](https://github.com/eugene001dayne)*
+*"Built for the age of AI agents."*
