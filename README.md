@@ -1,6 +1,7 @@
 # Iron-Thread
 
 **Open-source middleware that validates AI outputs before they reach your database.**
+**Learn more at: threadsuite.netlify.app**
 
 [![PyPI version](https://badge.fury.io/py/iron-thread.svg)](https://pypi.org/project/iron-thread/)
 [![npm version](https://badge.fury.io/js/iron-thread.svg)](https://www.npmjs.com/package/iron-thread)
