@@ -81,3 +81,24 @@ def verify_entry(entry, public_b64):
         return False, "signature invalid"
     except (KeyError, ValueError, TypeError) as e:
         return False, f"malformed entry: {e}"
+
+def verify_chain(entries, public_keys):
+    """
+    entries: list of entries ordered by seq, starting at seq 1.
+    public_keys: {key_id: public_b64}
+    """
+    prev_hash = GENESIS
+    for i, e in enumerate(entries, start=1):
+        body = e.get("body", {})
+        if body.get("seq") != i:
+            return False, f"sequence gap or reorder at position {i}"
+        if body.get("prev_hash") != prev_hash:
+            return False, f"broken link at seq {i}"
+        pub = public_keys.get(body.get("key_id"))
+        if pub is None:
+            return False, f"unknown key at seq {i}"
+        ok, why = verify_entry(e, pub)
+        if not ok:
+            return False, f"seq {i}: {why}"
+        prev_hash = e["entry_hash"]
+    return True, "ok"
