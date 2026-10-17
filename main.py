@@ -57,6 +57,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from attest_routes import router as attest_router  # noqa: E402
+app.include_router(attest_router)
+
 # ─────────────────────────────────────────────
 # SUPABASE CLIENT
 # ─────────────────────────────────────────────
