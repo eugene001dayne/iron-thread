@@ -65,6 +65,9 @@ app.include_router(attest_router)
 # ─────────────────────────────────────────────
 
 def get_client():
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        from localdb import LocalClient  # zero-service default: SQLite
+        return LocalClient()
     return httpx.Client(
         base_url=f"{SUPABASE_URL}/rest/v1",
         headers=HEADERS,
