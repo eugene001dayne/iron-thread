@@ -62,6 +62,8 @@ app.include_router(attest_router)
 import logging  # noqa: E402
 from attest_routes import get_ctx as attest_ctx  # noqa: E402
 from attest_store import record_attestation  # noqa: E402
+from attestation import verify_chain  # noqa: E402
+from reconcile import reconcile  # noqa: E402
 _attest_log = logging.getLogger("iron-thread")
 
 # ─────────────────────────────────────────────
@@ -911,3 +913,38 @@ def delete_webhook(webhook_id: str):
             json={"active": False}
         )
     return {"deleted": True, "webhook_id": webhook_id}
+
+
+# ─────────────────────────────────────────────
+# RECONCILIATION: does the stored data still match what was signed?
+# ─────────────────────────────────────────────
+
+@app.get("/attestations/chains/{chain_id}/reconcile")
+def reconcile_chain(chain_id: str):
+    ctx = attest_ctx()
+    entries = ctx["store"].chain(chain_id)
+    if entries:
+        chain_ok, chain_reason = verify_chain(entries, ctx["keys"])
+    else:
+        chain_ok, chain_reason = True, "no attestations yet"
+
+    with get_client() as client:
+        runs = client.get("/validation_runs", params={
+            "schema_id": f"eq.{chain_id}", "order": "created_at.asc"}).json()
+        schema_rows = client.get("/schemas", params={"id": f"eq.{chain_id}"}).json()
+    if not runs and not entries and not schema_rows:
+        raise HTTPException(status_code=404, detail="Unknown chain")
+
+    schema_def = schema_rows[0]["schema_definition"] if schema_rows else None
+    result = reconcile(runs, entries, schema_def)
+    return {
+        "chain_id": chain_id,
+        "ok": chain_ok and result["ok"],
+        "chain_valid": chain_ok,
+        "chain_reason": chain_reason,
+        "schema_checked": schema_def is not None,
+        "runs_checked": result["runs_checked"],
+        "attestations_checked": result["attestations_checked"],
+        "findings_total": result["findings_total"],
+        "findings": result["findings"],
+    }
