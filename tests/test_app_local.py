@@ -137,3 +137,86 @@ def test_standard_json_schema_features_work_end_to_end(client):
     assert bad["status"] == "failed"
     assert "items[0].price" in bad["reason"] and "items[1]" in bad["reason"]
     assert bad["attestation"]["body"]["status"] == "failed"   # a rejected verdict is attested too
+
+
+# ---- reconciliation: stored data vs. what was signed ----------------------------------------------
+
+def _seeded(c, n=3):
+    sid = make_schema(c)
+    runs = [c.post("/validate", json={"schema_id": sid, "ai_output": f'{{"amount": {i}}}'}).json()
+            for i in range(1, n + 1)]
+    return sid, runs
+
+
+def _reconcile(c, sid):
+    return c.get(f"/attestations/chains/{sid}/reconcile").json()
+
+
+def _problems(r):
+    return sorted((f["problem"], f["run_id"]) for f in r["findings"])
+
+
+def test_a_clean_chain_reconciles(client):
+    sid, runs = _seeded(client)
+    r = _reconcile(client, sid)
+    assert r["ok"] is True and r["chain_valid"] is True and r["schema_checked"] is True
+    assert r["runs_checked"] == 3 and r["attestations_checked"] == 3 and r["findings"] == []
+
+
+def test_editing_a_stored_result_after_signing_is_detected(client):
+    from localdb import LocalClient
+    sid, runs = _seeded(client)
+    rid = runs[1]["run_id"]
+    with LocalClient() as db:
+        db.patch("/validation_runs", params={"id": f"eq.{rid}"}, json={"status": "failed"})
+        db.patch("/validation_runs", params={"id": f"eq.{runs[2]['run_id']}"}, json={"validated_output": {"amount": 999}})
+        db.patch("/validation_runs", params={"id": f"eq.{runs[0]['run_id']}"}, json={"raw_ai_output": '{"amount": 7}'})
+    r = _reconcile(client, sid)
+    assert r["ok"] is False and r["chain_valid"] is True   # the PROOFS are intact; the DATA was changed
+    assert _problems(r) == sorted([("input_mismatch", runs[0]["run_id"]),
+                                   ("status_mismatch", rid),
+                                   ("output_mismatch", runs[2]["run_id"])])
+
+
+def test_a_deleted_run_leaves_an_orphan_attestation(client):
+    from localdb import LocalClient
+    sid, runs = _seeded(client)
+    with LocalClient() as db:
+        db.delete("/validation_runs", params={"id": f"eq.{runs[1]['run_id']}"})
+    assert _problems(_reconcile(client, sid)) == [("orphan_attestation", runs[1]["run_id"])]
+
+
+def test_a_deleted_newest_attestation_is_caught_even_without_a_pinned_head(client):
+    import os
+    import sqlite3
+    sid, runs = _seeded(client)
+    db = sqlite3.connect(os.environ["IRONTHREAD_DB"])
+    db.execute("DELETE FROM attestations WHERE run_id=?", (runs[2]["run_id"],))
+    db.commit()
+    db.close()
+    r = _reconcile(client, sid)
+    assert r["chain_valid"] is True                      # a shortened chain still verifies by itself...
+    assert _problems(r) == [("unattested_run", runs[2]["run_id"])]   # ...but the surviving run gives it away
+
+
+def test_a_run_inserted_behind_the_apps_back_has_no_proof(client):
+    from localdb import LocalClient
+    sid, runs = _seeded(client, 1)
+    with LocalClient() as db:
+        db.post("/validation_runs", json={"id": "sneaky", "schema_id": sid, "raw_ai_output": "{}",
+                                          "validated_output": {}, "status": "passed", "attempts": 1,
+                                          "created_at": "2026-10-18T00:00:00+00:00"})
+    assert _problems(_reconcile(client, sid)) == [("unattested_run", "sneaky")]
+
+
+def test_an_edited_schema_definition_is_detected(client):
+    from localdb import LocalClient
+    sid, runs = _seeded(client, 2)
+    with LocalClient() as db:
+        db.patch("/schemas", params={"id": f"eq.{sid}"}, json={"schema_definition": {"type": "object"}})
+    r = _reconcile(client, sid)
+    assert [p for p, _ in _problems(r)] == ["schema_mismatch", "schema_mismatch"]
+
+
+def test_reconcile_unknown_chain_is_404(client):
+    assert client.get("/attestations/chains/nope/reconcile").status_code == 404
