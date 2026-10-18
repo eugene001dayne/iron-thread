@@ -59,6 +59,10 @@ app.add_middleware(
 
 from attest_routes import router as attest_router  # noqa: E402
 app.include_router(attest_router)
+import logging  # noqa: E402
+from attest_routes import get_ctx as attest_ctx  # noqa: E402
+from attest_store import record_attestation  # noqa: E402
+_attest_log = logging.getLogger("iron-thread")
 
 # ─────────────────────────────────────────────
 # SUPABASE CLIENT
@@ -484,6 +488,20 @@ def run_validation(schema_id: str, ai_output: str, model_used: Optional[str], au
                 "error_reason": reason
             })
 
+    # v1.3.0 - signed attestation (Ed25519 + SHA-256 hash chain) of this evaluation.
+    # Fail open but LOUD: a signing problem must never lose a validation result, and must never be hidden.
+    attestation, attestation_error = None, None
+    try:
+        ctx = attest_ctx()
+        attestation = record_attestation(
+            ctx["store"], ctx["priv"], chain_id=schema_id, run_id=run_id, status=status,
+            raw_input=ai_output, output=validated_output, schema_definition=schema_def,
+            created_at=created_at,
+        )
+    except Exception as e:
+        attestation_error = f"{type(e).__name__}: {e}"
+        _attest_log.error("attestation failed for run %s: %s", run_id, attestation_error)
+
     # Fire webhooks
     fire_webhooks(schema_id, run_id, status, reason, model_used, latency_ms)
 
@@ -497,7 +515,9 @@ def run_validation(schema_id: str, ai_output: str, model_used: Optional[str], au
         "attempts": attempts,
         "latency_ms": latency_ms,
         "confidence_score": confidence_score,
-        "confidence_flags": confidence_flags
+        "confidence_flags": confidence_flags,
+        "attestation": attestation,
+        **({"attestation_error": attestation_error} if attestation_error else {}),
     }
 
 
