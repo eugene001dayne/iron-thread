@@ -8,19 +8,26 @@ from pydantic import BaseModel
 
 from attest_keys import load_or_create_private_key, trusted_public_keys
 from attest_store import SqliteStore
+from localdb import db_path
 from attestation import canonical, sha256_hex, verify_chain, verify_entry
 
 router = APIRouter(prefix="/attestations", tags=["attestations"])
 
 
 @lru_cache
+def _signing_key():
+    return load_or_create_private_key()
+
+
+@lru_cache
+def _store_for(path):
+    return SqliteStore(path)
+
+
 def get_ctx():
-    priv = load_or_create_private_key()
-    return {
-        "store": SqliteStore(os.getenv("ATTEST_DB", "ironthread.db")),
-        "priv": priv,
-        "keys": trusted_public_keys(priv),
-    }
+    # Same database file as the rest of the app (IRONTHREAD_DB): one file holds everything.
+    priv = _signing_key()
+    return {"store": _store_for(db_path()), "priv": priv, "keys": trusted_public_keys(priv)}
 
 
 @router.get("/keys")
@@ -68,6 +75,7 @@ class VerifyRequest(BaseModel):
     entry: dict
     input: Optional[str] = None   # the raw AI output you claim was evaluated
     output: Optional[Any] = None  # the validated output you claim came back
+    schema_definition: Optional[Any] = None  # the schema you claim it was checked against
 
 
 @router.post("/verify")
@@ -83,4 +91,6 @@ def verify_proof(req: VerifyRequest, ctx=Depends(get_ctx)):
         result["input_matches"] = sha256_hex(req.input.encode("utf-8")) == body.get("input_sha256")
     if ok and req.output is not None:
         result["output_matches"] = sha256_hex(canonical(req.output)) == body.get("output_sha256")
+    if ok and req.schema_definition is not None:
+        result["schema_matches"] = sha256_hex(canonical(req.schema_definition)) == body.get("schema_sha256")
     return result

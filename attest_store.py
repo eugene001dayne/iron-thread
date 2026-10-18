@@ -83,7 +83,8 @@ class SqliteStore:
         return [self._entry(r) for r in rows]
 
 
-def record_attestation(store, private_b64, *, chain_id, run_id, status, raw_input, output, retries=20):
+def record_attestation(store, private_b64, *, chain_id, run_id, status, raw_input, output,
+                       schema_definition=None, created_at=None, retries=20):
     """Read the head, build the next entry, try to append. If we lose a race, re-read and retry."""
     for _ in range(retries):
         last = store.last(chain_id)
@@ -92,6 +93,7 @@ def record_attestation(store, private_b64, *, chain_id, run_id, status, raw_inpu
         entry = make_entry(
             private_b64, chain_id=chain_id, seq=seq, prev_hash=prev,
             run_id=run_id, status=status, raw_input=raw_input, output=output,
+            schema_definition=schema_definition, created_at=created_at,
         )
         try:
             store.append(entry)
