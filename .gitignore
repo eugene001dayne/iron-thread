@@ -8,3 +8,5 @@ __pycache__/
 *.db-shm
 .env
 *.key
+review/
+review.zip
