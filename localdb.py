@@ -124,18 +124,25 @@ def _prune_dead_threads():
     _REGISTRY[:] = alive
 
 
-def _connection(path):
-    """One long-lived connection per (thread, database file)."""
+def _connection(path, durable=False):
+    """
+    One long-lived connection per (thread, database file, durability mode).
+
+    durable=False: synchronous=NORMAL, no fsync per commit. For ordinary tables.
+    durable=True:  synchronous=FULL, every commit is fsynced. For the attestation chain,
+                   whose entries must survive a power cut.
+    """
     if getattr(_tls, "gen", None) != _GEN:
         _tls.conns = {}
         _tls.gen = _GEN
-    conn = _tls.conns.get(path)
+    key = (path, durable)
+    conn = _tls.conns.get(key)
     if conn is None:
         # check_same_thread=False only so close_all() may close it; each thread USES only its own.
         conn = sqlite3.connect(path, timeout=10, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA synchronous=NORMAL")  # WAL + NORMAL: no fsync per commit
-        _tls.conns[path] = conn
+        conn.execute("PRAGMA synchronous=FULL" if durable else "PRAGMA synchronous=NORMAL")
+        _tls.conns[key] = conn
         with _CONN_LOCK:
             _prune_dead_threads()
             _REGISTRY.append((threading.current_thread(), conn))

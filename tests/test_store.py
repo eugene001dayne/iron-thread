@@ -69,3 +69,26 @@ def test_by_run_lookup(tmp_path):
     e = rec(store, priv, "c1", "run-42")
     assert store.by_run("run-42")["entry_hash"] == e["entry_hash"]
     assert store.by_run("nope") is None
+
+
+def test_store_uses_the_threads_durable_connection(tmp_path):
+    import localdb
+    p = str(tmp_path / "t.db")
+    store = SqliteStore(p)
+    durable = localdb._connection(p, durable=True)
+    priv, _ = generate_keypair()
+    rec(store, priv, "c1", "r1")
+    assert localdb._connection(p, durable=True) is durable          # reused, not reopened
+    assert localdb._connection(p, durable=False) is not durable     # ordinary tables use a different one
+    assert durable.execute("PRAGMA synchronous").fetchone()[0] == 2  # FULL: fsync on every commit
+    assert localdb._connection(p, durable=False).execute("PRAGMA synchronous").fetchone()[0] == 1  # NORMAL
+
+
+def test_store_still_works_after_a_rejected_duplicate(tmp_path):
+    store = SqliteStore(str(tmp_path / "t.db"))
+    priv, pub = generate_keypair()
+    rec(store, priv, "c1", "run-1")
+    with pytest.raises(DuplicateRun):
+        rec(store, priv, "c1", "run-1")
+    rec(store, priv, "c1", "run-2")  # the shared connection must not be stuck mid-transaction
+    assert verify_chain(store.chain("c1"), {key_id(pub): pub}) == (True, "ok")
