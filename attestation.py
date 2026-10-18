@@ -42,7 +42,8 @@ def key_id(public_b64: str) -> str:
     return sha256_hex(base64.b64decode(public_b64))[:16]
 
 
-def make_entry(private_b64, *, chain_id, seq, prev_hash, run_id, status, raw_input, output):
+def make_entry(private_b64, *, chain_id, seq, prev_hash, run_id, status, raw_input, output,
+               schema_definition=None, created_at=None):
     """Build the body, hash it, sign the hash. Returns the full entry."""
     priv = Ed25519PrivateKey.from_private_bytes(base64.b64decode(private_b64))
     pub_b64 = base64.b64encode(
@@ -58,8 +59,9 @@ def make_entry(private_b64, *, chain_id, seq, prev_hash, run_id, status, raw_inp
         "status": status,
         "input_sha256": sha256_hex(raw_input.encode("utf-8")),
         "output_sha256": sha256_hex(canonical(output)) if output is not None else None,
+        "schema_sha256": sha256_hex(canonical(schema_definition)) if schema_definition is not None else None,
         "key_id": key_id(pub_b64),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at or datetime.now(timezone.utc).isoformat(),
     }
     entry_hash = sha256_hex(canonical(body))
     signature = priv.sign(bytes.fromhex(entry_hash))
