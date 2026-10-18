@@ -4,6 +4,7 @@ import sqlite3
 from contextlib import contextmanager
 
 from attestation import GENESIS, make_entry
+from localdb import _connection  # shared per-thread connections
 
 
 class Conflict(Exception):
@@ -37,15 +38,12 @@ class SqliteStore:
 
     @contextmanager
     def _conn(self):
-        # One short-lived connection per call: safe across threads.
-        # Commits on success, rolls back on error, ALWAYS closes (Windows can't delete open files).
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
-        try:
-            with c:
-                yield c
-        finally:
-            c.close()
+        # The calling thread's long-lived connection (reopening a WAL database on every call is what
+        # made writes ~100 ms on Windows). durable=True keeps a full fsync on every commit, because
+        # audit entries must survive a power cut.
+        c = _connection(self.path, durable=True)
+        with c:  # commit on success, roll back on error; does NOT close
+            yield c
 
     @staticmethod
     def _entry(row):
@@ -53,10 +51,10 @@ class SqliteStore:
 
     def last(self, chain_id):
         with self._conn() as c:
-            row = c.execute(
+            rows = c.execute(
                 "SELECT * FROM attestations WHERE chain_id=? ORDER BY seq DESC LIMIT 1", (chain_id,)
-            ).fetchone()
-        return self._entry(row) if row else None
+            ).fetchall()  # fetchall, so no half-read statement is left holding a snapshot open
+        return self._entry(rows[0]) if rows else None
 
     def append(self, entry):
         b = entry["body"]
@@ -74,8 +72,8 @@ class SqliteStore:
 
     def by_run(self, run_id):
         with self._conn() as c:
-            row = c.execute("SELECT * FROM attestations WHERE run_id=?", (run_id,)).fetchone()
-        return self._entry(row) if row else None
+            rows = c.execute("SELECT * FROM attestations WHERE run_id=?", (run_id,)).fetchall()
+        return self._entry(rows[0]) if rows else None
 
     def chain(self, chain_id):
         with self._conn() as c:
