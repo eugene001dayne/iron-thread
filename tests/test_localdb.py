@@ -68,3 +68,53 @@ def test_values_are_parameterised(db):
 def test_duplicate_primary_key_is_409(db):
     db.post("/schemas", json={"id": "s1", "name": "A", "created_at": "x"})
     assert db.post("/schemas", json={"id": "s1", "name": "B", "created_at": "x"}).status_code == 409
+
+
+def test_tables_are_recreated_if_the_db_file_is_deleted(tmp_path):
+    import os
+    p = str(tmp_path / "t.db")
+    import localdb
+    with LocalClient(p) as c:
+        c.post("/schemas", json={"id": "s1", "name": "A", "created_at": "x"})
+    localdb.close_all()  # release connections, or Windows won't let us delete the file
+    for f in (p, p + "-wal", p + "-shm"):
+        if os.path.exists(f):
+            os.remove(f)
+    with LocalClient(p) as c:
+        assert c.get("/schemas").json() == []
+
+
+def test_failed_multi_row_insert_rolls_back_and_connection_stays_usable(db):
+    r = db.post("/schemas", json=[{"id": "a", "name": "A", "created_at": "x"}, {"id": "b", "nope": 1}])
+    assert r.status_code == 400
+    assert db.get("/schemas").json() == []  # first row was rolled back, not left half-written
+    assert db.post("/schemas", json={"id": "c", "name": "C", "created_at": "x"}).status_code == 201
+
+
+def test_connection_is_reused_within_a_thread_and_not_shared_across_threads(tmp_path):
+    import threading
+    p = str(tmp_path / "t.db")
+    seen, done = {}, threading.Event()
+
+    def work(name):
+        with LocalClient(p) as a:
+            first = a._c
+        with LocalClient(p) as b:
+            second = b._c
+        seen[name] = (first, second)  # keep references so object identity can't be recycled
+        done.wait(5)
+
+    threads = [threading.Thread(target=work, args=(n,)) for n in "xy"]
+    [t.start() for t in threads]
+    while len(seen) < 2:
+        pass
+    done.set()
+    [t.join() for t in threads]
+    assert seen["x"][0] is seen["x"][1]      # reused inside one thread
+    assert seen["x"][0] is not seen["y"][0]  # never shared between threads
+
+
+def test_exiting_the_with_block_does_not_close_the_connection(tmp_path):
+    with LocalClient(str(tmp_path / "t.db")) as c:
+        conn = c._c
+    assert conn.execute("SELECT 1").fetchone()[0] == 1
