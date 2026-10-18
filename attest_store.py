@@ -1,6 +1,7 @@
 """SQLite storage for attestation chains + the one function the app will call."""
 import json
 import sqlite3
+from contextlib import contextmanager
 
 from attestation import GENESIS, make_entry
 
@@ -34,11 +35,17 @@ class SqliteStore:
             c.execute("PRAGMA journal_mode=WAL")
             c.execute(SCHEMA)
 
+    @contextmanager
     def _conn(self):
         # One short-lived connection per call: safe across threads.
+        # Commits on success, rolls back on error, ALWAYS closes (Windows can't delete open files).
         c = sqlite3.connect(self.path, timeout=10)
         c.row_factory = sqlite3.Row
-        return c
+        try:
+            with c:
+                yield c
+        finally:
+            c.close()
 
     @staticmethod
     def _entry(row):
