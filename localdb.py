@@ -14,6 +14,8 @@ don't have to change:
 import json
 import os
 import sqlite3
+import threading
+from contextlib import closing
 
 JSON_COLS = {"schema_definition", "validated_output", "confidence_flags", "corrected_output"}
 BOOL_COLS = {"on_failure", "on_success", "active"}
@@ -67,28 +69,102 @@ def db_path():
     return os.getenv("IRONTHREAD_DB", "ironthread.db")
 
 
+_INITIALISED = set()
+_INIT_LOCK = threading.Lock()
+
+
 def init_db(path=None):
-    with sqlite3.connect(path or db_path()) as c:
+    """Create tables once per process per database file (not once per request)."""
+    path = path or db_path()
+    if path in _INITIALISED and os.path.exists(path):
+        return
+    with _INIT_LOCK:
+        if path in _INITIALISED and os.path.exists(path):
+            return
+        if path in _INITIALISED:
+            close_all()  # the file vanished: drop connections that still point at the old one
+        _create_tables(path)
+        _INITIALISED.add(path)
+
+
+def _create_tables(path):
+    with closing(sqlite3.connect(path)) as c:  # closing(): `with sqlite3.connect()` alone never closes
         c.execute("PRAGMA journal_mode=WAL")
         for table, cols in TABLES.items():
             ddl = ", ".join(f"{name} {typ}" for name, typ in cols.items())
             c.execute(f"CREATE TABLE IF NOT EXISTS {table} ({ddl})")
         c.execute("CREATE INDEX IF NOT EXISTS idx_runs_schema ON validation_runs(schema_id, created_at)")
+        c.commit()
+
+
+# -- persistent per-thread connections -------------------------------------------------------
+# Closing the LAST connection to a WAL database checkpoints it and deletes the -wal/-shm files;
+# the next connection recreates them. Doing that on every request is brutally slow on Windows
+# (measured here: ~98 ms per insert vs ~0.1 ms with a persistent connection).
+_tls = threading.local()
+_CONN_LOCK = threading.Lock()
+_REGISTRY = []  # [(thread, connection)] so close_all() can reach every thread's connection
+_GEN = 0
+
+
+def _close_quietly(conn):
+    try:
+        conn.close()
+    except sqlite3.Error:
+        pass
+
+
+def _prune_dead_threads():
+    alive = []
+    for thread, conn in _REGISTRY:
+        if thread.is_alive():
+            alive.append((thread, conn))
+        else:
+            _close_quietly(conn)
+    _REGISTRY[:] = alive
+
+
+def _connection(path):
+    """One long-lived connection per (thread, database file)."""
+    if getattr(_tls, "gen", None) != _GEN:
+        _tls.conns = {}
+        _tls.gen = _GEN
+    conn = _tls.conns.get(path)
+    if conn is None:
+        # check_same_thread=False only so close_all() may close it; each thread USES only its own.
+        conn = sqlite3.connect(path, timeout=10, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA synchronous=NORMAL")  # WAL + NORMAL: no fsync per commit
+        _tls.conns[path] = conn
+        with _CONN_LOCK:
+            _prune_dead_threads()
+            _REGISTRY.append((threading.current_thread(), conn))
+    return conn
+
+
+def close_all():
+    """Close every thread's connection. For tests, shutdown, or before deleting the DB file."""
+    global _GEN
+    with _CONN_LOCK:
+        _GEN += 1
+        entries = list(_REGISTRY)
+        _REGISTRY.clear()
+    for _, conn in entries:
+        _close_quietly(conn)
 
 
 class LocalClient:
     def __init__(self, path=None):
         self.path = path or db_path()
         init_db(self.path)
-        self._c = sqlite3.connect(self.path, timeout=10)
-        self._c.row_factory = sqlite3.Row
+        self._c = _connection(self.path)
 
     # `with get_client() as client:` support
     def __enter__(self):
         return self
 
     def __exit__(self, *exc):
-        self._c.close()
+        pass  # the connection belongs to the thread and stays open on purpose (see above)
 
     # ── helpers ──
     @staticmethod
@@ -165,13 +241,24 @@ class LocalClient:
             out[col] = v
         return out
 
+    def _rollback(self):
+        try:
+            self._c.rollback()
+        except sqlite3.Error:
+            pass
+
     def _guard(self, fn):
         try:
             return fn()
         except BadQuery as e:
+            self._rollback()
             return LocalResponse(400, {"message": str(e)})
         except sqlite3.IntegrityError as e:
+            self._rollback()
             return LocalResponse(409, {"message": str(e)})
+        except BaseException:
+            self._rollback()  # never leave a half-finished transaction on a long-lived connection
+            raise
 
     # ── verbs ──
     def get(self, path, params=None):
