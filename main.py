@@ -111,70 +111,7 @@ class WebhookCreate(BaseModel):
 # VALIDATION ENGINE
 # ─────────────────────────────────────────────
 
-def validate_against_schema(data: Any, schema: dict, path: str = "") -> list[str]:
-    errors = []
-
-    required = schema.get("required", [])
-    for field in required:
-        if not isinstance(data, dict) or field not in data:
-            errors.append(f"Missing required field: '{field}'")
-
-    properties = schema.get("properties", {})
-    if isinstance(data, dict):
-        for field, field_schema in properties.items():
-            if field not in data:
-                continue
-            value = data[field]
-            field_path = f"{path}.{field}" if path else field
-            field_type = field_schema.get("type")
-
-            # Type checks
-            if field_type == "string" and not isinstance(value, str):
-                errors.append(f"Field '{field_path}' must be a string, got {type(value).__name__}")
-            elif field_type == "integer" and not isinstance(value, int):
-                errors.append(f"Field '{field_path}' must be an integer, got {type(value).__name__}")
-            elif field_type == "number" and not isinstance(value, (int, float)):
-                errors.append(f"Field '{field_path}' must be a number, got {type(value).__name__}")
-            elif field_type == "boolean" and not isinstance(value, bool):
-                errors.append(f"Field '{field_path}' must be a boolean, got {type(value).__name__}")
-            elif field_type == "array" and not isinstance(value, list):
-                errors.append(f"Field '{field_path}' must be an array, got {type(value).__name__}")
-            elif field_type == "object" and not isinstance(value, dict):
-                errors.append(f"Field '{field_path}' must be an object, got {type(value).__name__}")
-
-            # String constraints
-            if isinstance(value, str):
-                if "minLength" in field_schema and len(value) < field_schema["minLength"]:
-                    errors.append(f"Field '{field_path}' length {len(value)} is below minimum {field_schema['minLength']}")
-                if "maxLength" in field_schema and len(value) > field_schema["maxLength"]:
-                    errors.append(f"Field '{field_path}' length {len(value)} exceeds maximum {field_schema['maxLength']}")
-                if "pattern" in field_schema and not re.match(field_schema["pattern"], value):
-                    errors.append(f"Field '{field_path}' does not match pattern '{field_schema['pattern']}'")
-
-            # Numeric constraints
-            if isinstance(value, (int, float)):
-                if "minimum" in field_schema and value < field_schema["minimum"]:
-                    errors.append(f"Field '{field_path}' value {value} is below minimum {field_schema['minimum']}")
-                if "maximum" in field_schema and value > field_schema["maximum"]:
-                    errors.append(f"Field '{field_path}' value {value} exceeds maximum {field_schema['maximum']}")
-
-            # Enum
-            if "enum" in field_schema and value not in field_schema["enum"]:
-                errors.append(f"Field '{field_path}' value '{value}' is not in allowed enum {field_schema['enum']}")
-
-            # Array constraints
-            if isinstance(value, list):
-                if "minItems" in field_schema and len(value) < field_schema["minItems"]:
-                    errors.append(f"Field '{field_path}' has {len(value)} items, minimum is {field_schema['minItems']}")
-                if "maxItems" in field_schema and len(value) > field_schema["maxItems"]:
-                    errors.append(f"Field '{field_path}' has {len(value)} items, maximum is {field_schema['maxItems']}")
-
-            # Nested object
-            if field_type == "object" and isinstance(value, dict):
-                nested_errors = validate_against_schema(value, field_schema, field_path)
-                errors.extend(nested_errors)
-
-    return errors
+from validation import validate_against_schema, schema_problem  # noqa: E402  (JSON Schema via the standard `jsonschema` library)
 
 
 # ─────────────────────────────────────────────
@@ -554,6 +491,9 @@ def health():
 @app.post("/schemas")
 @limiter.limit("30/minute")
 def create_schema(request: Request, body: SchemaCreate):
+    problem = schema_problem(body.schema_definition)
+    if problem:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON Schema: {problem}")
     schema_id = str(uuid.uuid4())
     row = {
         "id": schema_id,

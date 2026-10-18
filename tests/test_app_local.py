@@ -115,3 +115,25 @@ def test_signing_failure_never_loses_the_validation(client, monkeypatch):
     assert run["attestation"] is None                      # and the missing proof is visible, not hidden
     assert "key store offline" in run["attestation_error"]
     assert len(c.get("/runs").json()) == 1                 # and the run was stored
+
+
+def test_an_invalid_json_schema_is_rejected_when_created(client):
+    r = client.post("/schemas", json={"name": "bad", "schema_definition": {"type": "strng"}})
+    assert r.status_code == 400 and "Invalid JSON Schema" in r.json()["detail"]
+    assert client.get("/schemas").json() == []
+
+
+def test_standard_json_schema_features_work_end_to_end(client):
+    c = client
+    sid = c.post("/schemas", json={"name": "order", "schema_definition": {
+        "type": "object", "required": ["items"], "additionalProperties": False,
+        "properties": {"items": {"type": "array", "items": {
+            "type": "object", "required": ["price"],
+            "properties": {"price": {"type": "number", "minimum": 0}}}}}}}).json()["id"]
+    good = c.post("/validate", json={"schema_id": sid, "ai_output": '{"items": [{"price": 5}]}'}).json()
+    bad = c.post("/validate", json={
+        "schema_id": sid, "ai_output": '{"items": [{"price": -1}, {}], "extra": 1}'}).json()
+    assert good["status"] == "passed"
+    assert bad["status"] == "failed"
+    assert "items[0].price" in bad["reason"] and "items[1]" in bad["reason"]
+    assert bad["attestation"]["body"]["status"] == "failed"   # a rejected verdict is attested too
