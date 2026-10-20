@@ -10,7 +10,7 @@ def client(tmp_path, monkeypatch):
     import main
     monkeypatch.setattr(main, "SUPABASE_URL", None)  # never touch a real Supabase from tests
     monkeypatch.setattr(main, "SUPABASE_KEY", None)
-    return TestClient(main.app)
+    return TestClient(main.app, base_url="http://localhost", client=("127.0.0.1", 50000))
 
 
 def make_schema(c):
