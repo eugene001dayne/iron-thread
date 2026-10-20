@@ -49,15 +49,12 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from auth import cors_settings, require_auth  # noqa: E402
+from fastapi import Depends  # noqa: E402
+app.add_middleware(CORSMiddleware, **cors_settings())
 
 from attest_routes import router as attest_router  # noqa: E402
+app.router.dependencies.append(Depends(require_auth))
 app.include_router(attest_router)
 import logging  # noqa: E402
 from attest_routes import get_ctx as attest_ctx  # noqa: E402
