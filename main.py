@@ -62,6 +62,14 @@ from attest_store import record_attestation  # noqa: E402
 from attestation import verify_chain  # noqa: E402
 from reconcile import reconcile  # noqa: E402
 _attest_log = logging.getLogger("iron-thread")
+from fastapi.responses import JSONResponse  # noqa: E402
+from localdb import StorageBusy  # noqa: E402
+
+
+@app.exception_handler(StorageBusy)
+def _storage_busy(request: Request, exc: StorageBusy):
+    return JSONResponse(status_code=503, headers={"Retry-After": "1"},
+                        content={"detail": "The database is busy. Retry in a moment."})
 
 # ─────────────────────────────────────────────
 # SUPABASE CLIENT
@@ -411,7 +419,11 @@ def run_validation(schema_id: str, ai_output: str, model_used: Optional[str], au
     }
 
     with get_client() as client:
-        client.post("/validation_runs", json=run_data)
+        stored = client.post("/validation_runs", json=run_data)
+        if stored.status_code not in (200, 201, 204):
+            # Never hand back a run_id (or sign a proof) for a run that was not stored.
+            raise HTTPException(status_code=500,
+                                detail="The validation result could not be stored, so no run was recorded.")
 
         # Log corrections
         if auto_corrected:
