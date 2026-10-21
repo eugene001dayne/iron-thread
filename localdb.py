@@ -65,6 +65,10 @@ class BadQuery(Exception):
     pass
 
 
+class StorageBusy(Exception):
+    """The database is locked by another writer. Safe to retry shortly."""
+
+
 def db_path():
     return os.getenv("IRONTHREAD_DB", "ironthread.db")
 
@@ -263,6 +267,11 @@ class LocalClient:
         except sqlite3.IntegrityError as e:
             self._rollback()
             return LocalResponse(409, {"message": str(e)})
+        except sqlite3.OperationalError as e:
+            self._rollback()
+            if "locked" in str(e).lower() or "busy" in str(e).lower():
+                raise StorageBusy(str(e)) from e
+            raise
         except BaseException:
             self._rollback()  # never leave a half-finished transaction on a long-lived connection
             raise
@@ -307,6 +316,8 @@ class LocalClient:
     def patch(self, path, params=None, json=None):
         def run():
             table = self._table(path)
+            if not json:
+                raise BadQuery("nothing to update")
             cols = [self._col(table, c) for c in json]
             where, args = self._where(table, params)
             self._c.execute(
