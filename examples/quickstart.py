@@ -28,7 +28,19 @@ SCHEMA = {
     },
 }
 
-schema = http.post("/schemas", json={"name": "invoice", "schema_definition": SCHEMA}).json()
+try:
+    created = http.post("/schemas", json={"name": "invoice", "schema_definition": SCHEMA})
+except httpx.ConnectError:
+    sys.exit(f"Cannot reach Iron-Thread at {BASE}.\n"
+             "Start the server first, in another terminal:\n"
+             "    python -m uvicorn main:app\n"
+             "then run this script again.")
+if created.status_code in (401, 403):
+    sys.exit(f"The server refused the request ({created.status_code}): {created.json().get('detail', '')}\n"
+             "If it uses API keys, put one in the IRONTHREAD_API_KEY environment variable and try again.")
+if created.status_code >= 400:
+    sys.exit(f"The server answered {created.status_code}: {created.text[:300]}")
+schema = created.json()
 print(f"1. created schema {schema['id'][:8]}...\n")
 
 good = '{"customer": "Acme Ltd", "amount": 120.5}'
@@ -59,3 +71,6 @@ print(f"   {message}")
 report = http.get(f"/attestations/chains/{schema['id']}/reconcile").json()
 print(f"\n6. do the stored runs still match what was signed? ok={report['ok']}, "
       f"runs checked={report['runs_checked']}, problems={report['findings_total']}")
+
+# Exit non-zero if anything was off, so CI (and scripts) can tell.
+sys.exit(0 if check["valid"] and ok and report["ok"] else 1)
