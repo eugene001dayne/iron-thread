@@ -5,6 +5,7 @@
 
 [![PyPI version](https://badge.fury.io/py/iron-thread.svg)](https://pypi.org/project/iron-thread/)
 [![npm version](https://badge.fury.io/js/iron-thread.svg)](https://www.npmjs.com/package/iron-thread)
+[![tests](https://github.com/eugene001dayne/iron-thread/actions/workflows/ci.yml/badge.svg)](https://github.com/eugene001dayne/iron-thread/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Part of Thread Suite](https://img.shields.io/badge/Thread%20Suite-Iron--Thread-black)](https://github.com/eugene001dayne)
 
@@ -46,8 +47,7 @@ AI output --> Iron-Thread --> valid ....> your database
 
 ## Quickstart (about a minute)
 
-It is tested on Python 3.12 (Linux) and 3.14 (Windows). Other recent versions are likely fine;
-automated tests across versions are on the roadmap.
+It is tested in CI on Python 3.10 to 3.14, on both Linux and Windows.
 
 ```bash
 git clone https://github.com/eugene001dayne/iron-thread
@@ -224,6 +224,8 @@ Measured on a Windows laptop, Python 3.14:
 | Validations with a signed receipt on each | about 30 per second |
 | One receipt on its own | about 28 ms |
 
+Reproduce these with `scripts/bench.py`, `scripts/bench_store.py` and `scripts/prof.py`.
+
 The ~28 ms is one disk sync per receipt, on purpose: a proof that can vanish in a power cut is not much
 of a proof. An LLM call takes seconds, so this is rarely the bottleneck. Ordinary tables use a faster
 setting. SQLite connections are kept open per thread: opening and closing one per request cost about
@@ -303,7 +305,7 @@ receipts or offline verification: use the HTTP API or `verify_offline.py` for th
 
 ```bash
 pip install pytest
-pytest -q          # 121 tests
+pytest -q
 ```
 
 | File | Purpose |
@@ -317,6 +319,9 @@ pytest -q          # 121 tests
 | `auth.py` | API keys, local-only mode, CORS |
 | `localdb.py` | SQLite storage with per-thread connections |
 | `examples/quickstart.py` | The walk-through above |
+| `scripts/` | Benchmarks and the experiment behind the SQLite design |
+| `.github/workflows/ci.yml` | Tests on Windows and Linux, Python 3.10 to 3.14 |
+| `CONTRIBUTING.md` | How to contribute |
 
 ---
 
