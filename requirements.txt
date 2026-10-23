@@ -4,5 +4,6 @@ pydantic
 python-dotenv
 httpx
 slowapi
-google-genaicryptography==50.0.2
+google-genai
+cryptography==50.0.2
 jsonschema==4.26.0
