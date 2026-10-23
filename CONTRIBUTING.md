@@ -1,109 +1,79 @@
 # Contributing to Iron-Thread
 
-First off — thank you. Iron-Thread is built for developers 
-who care about reliable AI systems. Every contribution matters.
+Thank you. Iron-Thread is built for developers who care about reliable AI systems, and every contribution
+helps. This is the short version of how to help.
 
-## Ways to Contribute
+## Ways to contribute
 
-### 1. Report Bugs
-Open an issue on GitHub with:
-- What you expected to happen
-- What actually happened
-- Steps to reproduce
-- Your Python/Node version
+- **Report a bug.** Say what you expected, what happened, the steps to reproduce it, and your Python version
+  and operating system.
+- **Suggest a feature.** The best suggestions come from real pain: tell us what broke in your AI pipeline.
+- **Send a pull request.** Bug fixes, validation behaviour, documentation and tests are all welcome.
 
-### 2. Suggest Features
-Open an issue tagged `enhancement`. 
-The best suggestions come from real pain points — 
-tell us what broke in your AI pipeline.
+## Set up
 
-### 3. Submit a Pull Request
-We welcome PRs for:
-- Bug fixes
-- New validation types
-- SDK improvements
-- Documentation updates
-- New analytics endpoints
-
-## Getting Started
 ```bash
-# Clone the repo
 git clone https://github.com/eugene001dayne/iron-thread.git
 cd iron-thread
-
-# Install dependencies
-pip install fastapi uvicorn pydantic openai python-dotenv httpx
-
-# Set up environment
-cp .env.example .env
-# Add your Supabase credentials to .env
-
-# Run locally
+python -m venv .venv
+source .venv/bin/activate          # Git Bash on Windows: source .venv/Scripts/activate
+pip install -r requirements.txt pytest
+pytest -q                          # the whole suite
 python -m uvicorn main:app --reload
 ```
 
-Visit `http://localhost:8000/docs` to see all endpoints.
+The interactive docs are at `http://localhost:8000/docs`. No accounts are needed. Copy `.env.example` to
+`.env` only if you want to change a setting, and uncomment just the lines you need.
 
-## Project Structure
-```
-iron-thread/
-├── main.py              # FastAPI backend — all endpoints live here
-├── sdk/
-│   ├── ironthread/      # Python SDK
-│   └── iron-thread-js/  # JavaScript SDK
-├── .env.example         # Environment variable template
-├── Procfile             # Railway deployment config
-├── requirements.txt     # Python dependencies
-└── README.md
-```
+The README's *Development* section lists what each file does.
 
-## Code Style
+## Rules of the road
 
-- Keep it simple and readable
-- Every endpoint should have a clear docstring
-- New features need at least one test case
-- No breaking changes to existing endpoints without discussion
+- **Every change comes with a test.** Run `pytest -q` before you open a pull request. CI runs the suite on
+  Windows and Linux for Python 3.10 to 3.14, and a pull request needs to be green.
+- **Be careful with anything that is signed or security-relevant** (`attestation.py`, `attest_store.py`,
+  `attest_keys.py`, `verify_offline.py`, `auth.py`, `validation.py`). Changing what a receipt signs changes
+  the `it-attest/1` format and needs a version bump and tests; please open an issue first.
+- **Dependencies are added on purpose.** `requirements.txt` has one package per line, and
+  `tests/test_requirements.py` checks it. If you add a dependency, add it to that test too.
+- **Keep pull requests small and focused**, with small commits that each leave the tests passing.
+- **No breaking changes to existing endpoints** without discussion.
 
-## SDK Contributions
+## Reporting a security problem
 
-**Python SDK** lives in `sdk/ironthread/`
-**JavaScript SDK** lives in `sdk/iron-thread-js/`
+Please do not describe a vulnerability in a public issue. Use the repository's **Security** tab and choose
+"Report a vulnerability". If that is not available, open an issue that asks for a private way to reach the
+maintainer, without any details of the problem.
 
-When updating SDKs:
-- Bump the version in `pyproject.toml` or `package.json`
-- Update the README in the sdk folder
-- Test against the live API before submitting
+## Commit messages
 
-## Commit Message Format
-```
-feat: add new analytics endpoint
-fix: handle empty schema definition
-docs: update README with new examples
-refactor: simplify validation logic
-```
+Start with one of `feat`, `fix`, `perf`, `docs`, `test`, `ci` or `chore`, then a short description:
+   feat: add a new analytics endpoint
+   fix: handle an empty schema definition
+   perf: keep SQLite connections open per thread
+   docs: update the quickstart
 
-## Community
 
-- Be respectful
-- Be constructive
-- Help others who open issues
+## SDKs
+
+The Python SDK lives in `sdk/ironthread/` and the JavaScript SDK in `sdk/iron-thread-js/`. They are at version
+0.3.0 and are behind the server: they do not yet send API keys or expose receipts and offline verification.
+Bringing them up to date is a good contribution. When you change an SDK, bump the version in `pyproject.toml`
+or `package.json` and update its README.
 
 ## Roadmap
 
-Want to work on something meaningful? 
-These are actively needed:
+These are actively wanted:
 
-- [ ] AI auto-correction loop (Anthropic + OpenAI)
-- [ ] Webhook alerts on validation failure
-- [ ] Per-user API keys
-- [ ] JavaScript SDK improvements
-- [ ] More validation types (regex, range, enum)
-- [ ] Batch validation endpoint
+- [ ] Automatic anchoring of head hashes outside the operator's control
+- [ ] A JavaScript verifier (it would also test our canonical JSON across languages)
+- [ ] Updated SDKs: API keys, receipts, offline verification
+- [ ] RFC 8785 canonical JSON
+- [ ] An independent review of the cryptography
+- [ ] Provider-agnostic auto-correction (today it uses Gemini only)
 
-Pick one, open an issue, let's talk.
+Pick one, open an issue, and let's talk.
 
 ---
 
-Part of the Thread Suite — Iron-Thread · Test-Thread · Prompt-Thread
-
-Built by Eugene Dayne Mawuli
+Part of the Thread Suite. Built by Eugene Dayne Mawuli.
