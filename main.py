@@ -40,7 +40,7 @@ HEADERS = {
 
 limiter = Limiter(key_func=get_remote_address)
 
-VERSION = "1.3.0"
+VERSION = "2.0.0"
 
 app = FastAPI(
     title="Iron-Thread",
@@ -438,7 +438,7 @@ def run_validation(schema_id: str, ai_output: str, model_used: Optional[str], au
                 "error_reason": reason
             })
 
-    # v1.3.0 - signed attestation (Ed25519 + SHA-256 hash chain) of this evaluation.
+    # v2.0.0 - signed attestation (Ed25519 + SHA-256 hash chain) of this evaluation.
     # Fail open but LOUD: a signing problem must never lose a validation result, and must never be hidden.
     attestation, attestation_error = None, None
     try:
