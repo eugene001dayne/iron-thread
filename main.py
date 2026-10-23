@@ -40,10 +40,12 @@ HEADERS = {
 
 limiter = Limiter(key_func=get_remote_address)
 
+VERSION = "1.3.0"
+
 app = FastAPI(
     title="Iron-Thread",
     description="Open-source middleware that validates AI outputs before they reach your database.",
-    version="1.2.0"
+    version=VERSION
 )
 
 app.state.limiter = limiter
@@ -477,7 +479,7 @@ def run_validation(schema_id: str, ai_output: str, model_used: Optional[str], au
 def root():
     return {
         "tool": "Iron-Thread",
-        "version": "1.2.0",
+        "version": VERSION,
         "status": "running",
         "description": "Open-source middleware that validates AI outputs before they reach your database.",
         "github": "https://github.com/eugene001dayne/iron-thread",
