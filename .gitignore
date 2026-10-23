@@ -10,3 +10,9 @@ __pycache__/
 *.key
 review/
 review.zip
+
+.venv/
+.pytest_cache/
+dist/
+*.egg-info/
+node_modules/
