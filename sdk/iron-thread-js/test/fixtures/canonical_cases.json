@@ -1,0 +1,56 @@
+[
+  {
+    "name": "keys are sorted",
+    "json": "{\"b\":1,\"a\":2}",
+    "expected": "{\"a\":2,\"b\":1}",
+    "known_difference": false
+  },
+  {
+    "name": "nesting",
+    "json": "{\"z\":{\"y\":[3,2,{\"b\":1,\"a\":0}],\"x\":null},\"a\":true}",
+    "expected": "{\"a\":true,\"z\":{\"x\":null,\"y\":[3,2,{\"a\":0,\"b\":1}]}}",
+    "known_difference": false
+  },
+  {
+    "name": "unicode",
+    "json": "{\"é\":\"héllo\",\"日本語\":\"テスト\"}",
+    "expected": "{\"é\":\"héllo\",\"日本語\":\"テスト\"}",
+    "known_difference": false
+  },
+  {
+    "name": "astral characters sort by code point, not UTF-16 unit",
+    "json": "{\"\\uff5e\":1,\"\\ud83d\\ude00\":2,\"a\":3}",
+    "expected": "{\"a\":3,\"～\":1,\"😀\":2}",
+    "known_difference": false
+  },
+  {
+    "name": "escapes",
+    "json": "{\"q\":\"say \\\"hi\\\"\\n\\ttab \\\\ back \\u0001 \\u007f \\u2028\"}",
+    "expected": "{\"q\":\"say \\\"hi\\\"\\n\\ttab \\\\ back \\u0001   \"}",
+    "known_difference": false
+  },
+  {
+    "name": "empty containers",
+    "json": "{\"a\":{},\"b\":[],\"c\":\"\"}",
+    "expected": "{\"a\":{},\"b\":[],\"c\":\"\"}",
+    "known_difference": false
+  },
+  {
+    "name": "integers",
+    "json": "{\"n\":[0,-1,42,1000000,9007199254740991]}",
+    "expected": "{\"n\":[0,-1,42,1000000,9007199254740991]}",
+    "known_difference": false
+  },
+  {
+    "name": "prefix keys",
+    "json": "{\"ab\":1,\"a\":2,\"\":3,\"B\":4}",
+    "expected": "{\"\":3,\"B\":4,\"a\":2,\"ab\":1}",
+    "known_difference": false
+  },
+  {
+    "name": "floats are the one known difference",
+    "json": "{\"f\":1.0,\"g\":0.5}",
+    "expected": "{\"f\":1.0,\"g\":0.5}",
+    "known_difference": true
+  }
+]

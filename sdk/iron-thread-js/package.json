@@ -1,17 +1,40 @@
 {
   "name": "iron-thread",
-  "version": "0.3.0",
-  "description": "Open-source middleware that validates AI outputs before they reach your database.",
+  "version": "0.4.0",
+  "description": "Client for Iron-Thread: check AI output before it reaches your database, and verify signed receipts offline.",
   "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./verify": {
+      "types": "./verify.d.ts",
+      "default": "./verify.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "verify.js",
+    "verify.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
   "keywords": ["ai", "validation", "middleware", "agents", "llm", "thread-suite"],
   "author": "Eugene Dayne Mawuli",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/eugene001dayne/iron-thread",
+  "homepage": "https://github.com/eugene001dayne/iron-thread#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eugene001dayne/iron-thread"
-  },
-  "dependencies": {
-    "node-fetch": "^2.6.9"
+    "url": "git+https://github.com/eugene001dayne/iron-thread.git",
+    "directory": "sdk/iron-thread-js"
   }
 }
