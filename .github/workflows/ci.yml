@@ -74,3 +74,64 @@ jobs:
           open("pub.txt", "w").write(pub)
           EOF
           python verify_offline.py chain.json --public-key "$(cat pub.txt)"
+
+  sdk-python-package:
+    name: Python SDK builds, passes twine, and installs cleanly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build twine
+      - name: build the package and check its metadata
+        working-directory: sdk
+        run: |
+          python -m build
+          python -m twine check dist/*
+      - name: install the wheel into a clean environment, with the verify extra, and import it
+        run: |
+          python -m venv "$RUNNER_TEMP/clean"
+          "$RUNNER_TEMP/clean/bin/pip" install "$(ls sdk/dist/*.whl)[verify]"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/clean/bin/python" -c "import ironthread; print(ironthread.__version__); from ironthread import verify_chain; print(verify_chain([], 'x'))"
+
+  sdk-js:
+    name: JavaScript SDK (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+        working-directory: sdk/iron-thread-js
+      - name: the package contains exactly the files we mean to publish
+        working-directory: sdk/iron-thread-js
+        run: npm pack --dry-run
+
+  sdk-js-end-to-end:
+    name: JavaScript SDK against a real server
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22"
+      - run: python -m pip install -r requirements.txt
+      - name: start the server, then run the JavaScript client against it
+        run: |
+          python -m uvicorn main:app &
+          sleep 5
+          node sdk/iron-thread-js/integration/e2e.js
