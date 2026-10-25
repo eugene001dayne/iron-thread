@@ -1,238 +1,89 @@
-# Iron-Thread
+# iron-thread: Python client
 
-**Open-source middleware that validates AI outputs before they reach your database.**
+The Python client for [Iron-Thread](https://github.com/eugene001dayne/iron-thread): check AI output against a
+JSON Schema before it reaches your database, and verify the signed receipt every verdict comes with.
 
-[![PyPI version](https://badge.fury.io/py/iron-thread.svg)](https://pypi.org/project/iron-thread/)
-[![npm version](https://badge.fury.io/js/iron-thread.svg)](https://www.npmjs.com/package/iron-thread)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Part of Thread Suite](https://img.shields.io/badge/Thread%20Suite-Iron--Thread-black)](https://github.com/eugene001dayne)
-
----
-
-## The problem
-
-When you chain an AI model to a database, the AI eventually returns broken output. Wrong types. Missing fields. Hallucinated values that look plausible but aren't valid. Your automation crashes. Your database gets dirty data. You find out when something downstream breaks — not before.
-
-There was no clean, lightweight, open-source checkpoint for this. Iron-Thread is that checkpoint.
-
-```
-AI Output → Iron-Thread → ✅ Clean Data → Database
-                        → ❌ Blocked + Logged → Auto-Correction → Retry
-```
-
----
-
-## What it does
-
-- **Validates** AI output against a JSON schema before it touches your database
-- **Blocks** outputs that fail — wrong types, missing fields, out-of-range values, bad patterns
-- **Auto-corrects** failed outputs using Google Gemini and retries validation
-- **Scores** content reliability — flags statistically anomalous values that pass schema but look wrong
-- **Chains** every run into a tamper-evident SHA-256 audit trail
-- **Logs** everything — every run, every correction, every failure
-- **Alerts** via webhooks when validation fails
-- **Analyzes** failure patterns, trends, and performance by model and schema
-
----
+You need an Iron-Thread server. It runs on your own machine in about a minute; see the
+[main README](https://github.com/eugene001dayne/iron-thread#quickstart-about-a-minute).
 
 ## Install
 
-**Python**
 ```bash
 pip install iron-thread
+pip install "iron-thread[verify]"     # adds offline receipt verification (needs the cryptography package)
 ```
 
-**JavaScript**
-```bash
-npm install iron-thread
-```
-
----
+Python 3.10 or newer. Version 0.4 works with Iron-Thread server 2.x. Earlier releases of this package pointed at
+a hosted service that no longer exists.
 
 ## Quickstart
 
-**Python**
 ```python
 from ironthread import IronThread
 
-it = IronThread()  # points to https://iron-thread.onrender.com
+it = IronThread()    # http://localhost:8000, or $IRONTHREAD_URL
 
-# Define your schema
-schema = it.create_schema("User Profile", {
-    "required": ["name", "email", "age"],
-    "properties": {
-        "name": {"type": "string", "minLength": 2},
-        "email": {"type": "string"},
-        "age": {"type": "integer", "minimum": 18, "maximum": 100},
-        "role": {"type": "string", "enum": ["admin", "user"]}
-    }
+schema = it.create_schema("invoice", {
+    "type": "object",
+    "required": ["customer", "amount"],
+    "properties": {"customer": {"type": "string"}, "amount": {"type": "number", "minimum": 0}},
 })
 
-# Validate AI output
-result = it.validate(ai_output, schema["id"], model_used="gpt-4")
+result = it.validate({"customer": "Acme Ltd", "amount": 120.5}, schema["id"])   # dicts are serialised for you
+print(result.status, result.reason)            # passed  Validation passed
 
-print(result.status)           # "passed", "failed", or "corrected"
-print(result.confidence_score) # 0.0–1.0 — how reliable the content looks
-print(result.confidence_flags) # fields that look statistically anomalous
+bad = it.validate('{"customer": "Acme Ltd", "amount": "about 120"}', schema["id"])
+print(bad.status, bad.reason)                  # failed  Field 'amount' must be a number, got str
 ```
 
-**Auto-correction**
-```python
-result = it.validate(ai_output, schema["id"], auto_correct=True)
+## The signed receipt
 
-print(result.auto_corrected)  # True if Gemini fixed it
-print(result.attempts)        # 1 or 2
-```
-
-**Batch validation**
-```python
-batch = it.validate_batch(["output1", "output2", "output3"], schema["id"])
-
-print(batch.success_rate)  # e.g. 66.67
-print(batch.failed)        # 1
-```
-
-**JavaScript**
-```javascript
-const { IronThread } = require('iron-thread');
-const it = new IronThread();
-
-const result = await it.validate(aiOutput, schemaId, 'gpt-4');
-console.log(result.status);
-console.log(result.confidence_score);
-```
-
----
-
-## Validation types
-
-| Constraint | Property | Example |
-|-----------|----------|---------|
-| Required fields | `"required": [...]` | `"required": ["name", "email"]` |
-| String | `"type": "string"` | any string |
-| Integer | `"type": "integer"` | whole numbers only |
-| Number | `"type": "number"` | int or float |
-| Boolean | `"type": "boolean"` | true/false |
-| Array | `"type": "array"` | list |
-| Object | `"type": "object"` | nested object |
-| Min length | `"minLength": 3` | string at least 3 chars |
-| Max length | `"maxLength": 100` | string at most 100 chars |
-| Minimum value | `"minimum": 18` | number >= 18 |
-| Maximum value | `"maximum": 100` | number <= 100 |
-| Enum | `"enum": ["a","b","c"]` | value must be one of these |
-| Pattern | `"pattern": "^[a-z]+$"` | must match regex |
-| Min items | `"minItems": 1` | array >= 1 items |
-| Max items | `"maxItems": 5` | array <= 5 items |
-
----
-
-## Confidence scoring
-
-Iron-Thread doesn't just check structure — it scores content reliability. After a run passes validation, a second pass compares values against the statistical history of past runs for that schema.
-
-- **Numeric fields** — flags values beyond 3 standard deviations from the historical mean
-- **String fields** — flags lengths beyond 3 standard deviations from historical mean length
-- **Enum fields** — flags values that have never appeared before in past runs
-
-Returns `confidence_score` (0.0–1.0) and `confidence_flags` (list of anomalous fields). Activates automatically after 10 passing runs. No AI needed — fully deterministic.
+Every result carries `result.attestation`: an Ed25519-signed, hash-chained record of the input, the output, the
+exact schema and the verdict. It holds hashes, not your data.
 
 ```python
-result = it.validate(ai_output, schema["id"])
+public_key = "..."   # get it from a source you trust, for example pinned in your own repository
 
-if result.confidence_score < 0.8:
-    print("Anomalous fields:", result.confidence_flags)
-    # flag for human review
+check = it.verify_chain_offline(schema["id"], public_key, expect_head=recorded_head_hash)
+if not check:
+    raise SystemExit(check.message)      # "entry 2: contents were altered after signing", ...
 ```
 
----
+`verify_chain_offline` downloads the chain and checks it **on your machine** (needs `iron-thread[verify]`). Prefer
+a public key you did not fetch from the same server, and pass `expect_head` / `expect_length` that you recorded
+earlier: that is what catches a chain whose newest entries were deleted.
 
-## Tamper-evident audit trail
+| Method | What it does |
+|---|---|
+| `get_attestation(run_id)` | One run's receipt |
+| `get_chain(schema_id)` | Every receipt for a schema, oldest first |
+| `verify_chain_offline(...)` | Check a chain yourself, locally |
+| `verify_chain_remote(schema_id)` | Ask the server (you are trusting its answer) |
+| `verify_attestation(entry, input=, output=, schema_definition=)` | Check one receipt against your data |
+| `reconcile(schema_id)` | Do the stored runs still match what was signed? |
+| `public_keys()` | The server's public signing keys |
 
-Every validation run is hashed with SHA-256 at write time. Each hash incorporates the previous run's hash, creating a verifiable chain. Any tampering with any historical run breaks all subsequent links.
+`ironthread.verify_chain(entries, public_key, ...)` is the same check as a plain function, with no client or
+network involved.
+
+## API keys
+
+A server in its default mode only accepts requests from its own machine. If it uses API keys:
 
 ```python
-# Verify a single run
-verify = it.verify_run(result.run_id)
-print(verify["verified"])  # True or False
-
-# Verify the full chain for a schema
-chain = it.get_schema_chain(schema["id"])
-print(chain["chain_verified"])  # True or False
+it = IronThread("https://your-server", api_key="it_...")     # or set $IRONTHREAD_API_KEY
 ```
 
-Hand the chain endpoint response to a regulator. The math speaks for itself.
+## Errors
 
----
+Server errors raise `IronThreadError` (a subclass of `httpx.HTTPStatusError`) with `.status_code` and the
+server's own explanation in `.detail`. If the server cannot be reached you get an `httpx.ConnectError` that says
+how to start it.
 
-## Webhooks
+## Other methods
 
-```python
-it.create_webhook(
-    name="Slack alert",
-    url="https://hooks.slack.com/your-webhook",
-    on_failure=True,
-    on_success=False
-)
-```
+`list_schemas`, `validate_batch`, `runs`, `export_csv`, `stats`, `analytics_errors`, `analytics_trends`,
+`analytics_models`, `analytics_schemas`, `create_webhook`, `list_webhooks`, `delete_webhook`, `health`.
+`verify_run` and `get_schema_chain` use the older unsigned hash chain; prefer the receipts.
 
-Fires a POST with run details whenever validation fails.
-
----
-
-## Analytics
-
-```python
-it.stats()              # overview — totals, success rate, avg confidence
-it.analytics_errors()   # failure patterns by schema
-it.analytics_trends()   # success rate over time
-it.analytics_models()   # performance by AI model
-it.analytics_schemas()  # performance by schema
-it.export_csv()         # download full run history
-```
-
----
-
-## Self-hosted API
-
-The Iron-Thread API is open source. Deploy your own instance:
-
-```bash
-git clone https://github.com/eugene001dayne/iron-thread
-cd iron-thread
-pip install -r requirements.txt
-
-# Set environment variables
-SUPABASE_URL=your_url
-SUPABASE_KEY=your_key
-GOOGLE_API_KEY=your_key  # for auto-correction
-
-python -m uvicorn main:app --reload
-```
-
-Live hosted API: `https://iron-thread.onrender.com`
-API docs: `https://iron-thread.onrender.com/docs`
-
----
-
-## Part of the Thread Suite
-
-Iron-Thread is one of five open-source tools in the Thread Suite — the reliability layer for AI agents.
-
-| Tool | What it does |
-|------|-------------|
-| **Iron-Thread** | Validates AI output structure before your database |
-| **TestThread** | Tests whether your agent behaves correctly |
-| **PromptThread** | Versions prompts and tracks performance over time |
-| **ChainThread** | Verifies and governs agent-to-agent handoffs |
-| **PolicyThread** | Monitors production AI against compliance rules |
-
----
-
-## License
-
-Apache 2.0 — free to use, modify, and distribute.
-
----
-
-*Built by [Eugene Dayne Mawuli](https://github.com/eugene001dayne)*
-*"Built for the age of AI agents."*
+Apache 2.0. Part of the [Thread Suite](https://github.com/eugene001dayne).
