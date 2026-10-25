@@ -1,0 +1,115 @@
+{
+  "public_key": "YiN6WZpJOgIf2d2KPDZkAxUcd/o4S6CUb+tvdBsgCF0=",
+  "key_id": "8c480e4db55a02d6",
+  "head": "96619c503420fed05f544697601b579437365368499dd1a1338cd2699605324c",
+  "entries": [
+    {
+      "body": {
+        "v": "it-attest/1",
+        "chain_id": "fixture-chain",
+        "seq": 1,
+        "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "run_id": "run-1",
+        "status": "passed",
+        "input_sha256": "e5d5f7c1d225fd6b13623ebb1b5b9d075c705659f81868b1e37005a0923b0346",
+        "output_sha256": "2bfd14f43d17fc7cea24e0917a8879b4b2f880b8baeec1b9d90fbaad655e71bd",
+        "schema_sha256": "a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "key_id": "8c480e4db55a02d6",
+        "created_at": "2026-10-24T16:05:04.534272+00:00"
+      },
+      "entry_hash": "4df32febc75feef589ba1601ce7530c07de9436bb995c5cf6a4a8bd6a1108f2b",
+      "signature": "BEtZjQC9a8u37e0fmMwgNwF7pZUhyynC9sHzJFVffbIHydtRBh5ZR27M6nSvzPlVg7IQXrVQfUJJP2s8MOfNDw=="
+    },
+    {
+      "body": {
+        "v": "it-attest/1",
+        "chain_id": "fixture-chain",
+        "seq": 2,
+        "prev_hash": "4df32febc75feef589ba1601ce7530c07de9436bb995c5cf6a4a8bd6a1108f2b",
+        "run_id": "run-2",
+        "status": "failed",
+        "input_sha256": "fcb7ecf22a686fde527cafa2dd308d1c321ff6d1baddedf24668afbba85a7d64",
+        "output_sha256": null,
+        "schema_sha256": "a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "key_id": "8c480e4db55a02d6",
+        "created_at": "2026-10-24T16:05:04.535322+00:00"
+      },
+      "entry_hash": "a9973136c0143fadb8fd3339fe212ac91dee4981414c2e0e53ba9ad903c3bbdd",
+      "signature": "GqSpczH+8kbGu6KFfRXNBd/ZGd78BrMSRBOUmb+JLc96QEmBHd6e1eVY6cwHRwHxiGGRqOMOhoiMk5DQe9tyAg=="
+    },
+    {
+      "body": {
+        "v": "it-attest/1",
+        "chain_id": "fixture-chain",
+        "seq": 3,
+        "prev_hash": "a9973136c0143fadb8fd3339fe212ac91dee4981414c2e0e53ba9ad903c3bbdd",
+        "run_id": "run-3",
+        "status": "passed",
+        "input_sha256": "389d42d9a5766a33e43c9a95fe1e7555f2896ab790b0ec7e2c9dd552b9d4a44a",
+        "output_sha256": "215ddd5567ca2590efd4ea109b4e56cbe591e2676fbf54a9262692c539166da6",
+        "schema_sha256": "a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+        "key_id": "8c480e4db55a02d6",
+        "created_at": "2026-10-24T16:05:04.535611+00:00"
+      },
+      "entry_hash": "a9ae02ee561c69907ef493a8d7d357d609f1db6824c8a2d3a32d1e4444f696ba",
+      "signature": "87y/EAXmfCxNYqTuMM1ItgB6xSi3SKMESeNdfRF7tV8+ffCgoD5g9rOLAsPmiLx3SgC94WILMUaKi9qRr5suAA=="
+    },
+    {
+      "body": {
+        "v": "it-attest/1",
+        "chain_id": "fixture-chain",
+        "seq": 4,
+        "prev_hash": "a9ae02ee561c69907ef493a8d7d357d609f1db6824c8a2d3a32d1e4444f696ba",
+        "run_id": "run-4",
+        "status": "passed",
+        "input_sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+        "output_sha256": null,
+        "schema_sha256": null,
+        "key_id": "8c480e4db55a02d6",
+        "created_at": "2026-10-24T10:00:00+00:00",
+        "extra": {
+          "note": "héllo 🙂   \"quoted\" \\ back\tslash",
+          "～": 1,
+          "😀": 2,
+          "a": 3
+        }
+      },
+      "entry_hash": "c125e1091e22d86fbd92836cd3881f51939b38b3f7dacb392996d1c551e4488b",
+      "signature": "6KHE7+uVq7GZLJjhbIizK/vRteQ1WXT0QFd0DHEKvavjbw6oHakyNSam1P+99UxHlDa8fq9SuPoHqH9GGuytBg=="
+    },
+    {
+      "body": {
+        "v": "it-attest/1",
+        "chain_id": "fixture-chain",
+        "seq": 5,
+        "prev_hash": "c125e1091e22d86fbd92836cd3881f51939b38b3f7dacb392996d1c551e4488b",
+        "run_id": "run-5",
+        "status": "passed",
+        "input_sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+        "output_sha256": null,
+        "schema_sha256": null,
+        "key_id": "8c480e4db55a02d6",
+        "created_at": "2026-10-24T10:00:00+00:00",
+        "extra": {
+          "nested": {
+            "z": [
+              3,
+              2,
+              {
+                "b": 1,
+                "a": 0
+              }
+            ],
+            "x": null
+          },
+          "": "empty key",
+          "B": 1,
+          "ab": 2,
+          "a": 3
+        }
+      },
+      "entry_hash": "96619c503420fed05f544697601b579437365368499dd1a1338cd2699605324c",
+      "signature": "q9BE1A9azAbXPDSNjAP+dsFWj8HLU6OJkQVenkKOsEspg8Lh7aZ+vlPcvpBu13c4uTxfM4u5dJ8IBgsuXVLjDg=="
+    }
+  ]
+}
