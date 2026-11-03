@@ -56,18 +56,24 @@ Start with one of `feat`, `fix`, `perf`, `docs`, `test`, `ci` or `chore`, then a
 
 ## SDKs
 
-The Python SDK lives in `sdk/ironthread/` and the JavaScript SDK in `sdk/iron-thread-js/`. They are at version
-0.3.0 and are behind the server: they do not yet send API keys or expose receipts and offline verification.
-Bringing them up to date is a good contribution. When you change an SDK, bump the version in `pyproject.toml`
-or `package.json` and update its README.
+The Python SDK lives in `sdk/ironthread/` and the JavaScript SDK in `sdk/iron-thread-js/`. Both are at version 0.4.0.
+
+- **Tests.** The Python SDK is tested by `tests/test_sdk_python.py`, which is part of `pytest -q`. The JavaScript SDK
+  has its own suite: `cd sdk/iron-thread-js && npm test` (Node 20 or newer). CI runs both, and also runs the
+  JavaScript client against a real server.
+- **Two languages must agree.** The JavaScript tests use fixtures produced by the Python code. If you change the
+  receipt format or the canonical-JSON rule, regenerate them with `python scripts/make_sdk_fixtures.py` and update
+  both SDKs. That is a format change, so bump the receipt version too.
+- **Versions.** A published version can never be changed or reused. Bump `version` in `sdk/pyproject.toml` and
+  `sdk/ironthread/__init__.py` (a test keeps them equal), or in `sdk/iron-thread-js/package.json`, and update the
+  SDK's README.
 
 ## Roadmap
 
 These are actively wanted:
 
 - [ ] Automatic anchoring of head hashes outside the operator's control
-- [ ] A JavaScript verifier (it would also test our canonical JSON across languages)
-- [ ] Updated SDKs: API keys, receipts, offline verification
+- [ ] Releases from GitHub Actions without stored tokens (PyPI trusted publishing, npm staged publishing)
 - [ ] RFC 8785 canonical JSON
 - [ ] An independent review of the cryptography
 - [ ] Provider-agnostic auto-correction (today it uses Gemini only)
