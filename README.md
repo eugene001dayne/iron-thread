@@ -166,6 +166,8 @@ python verify_offline.py chain.json --public-key "<public key>" \
 
 A truncated chain, or one rewritten and re-signed with the same key, will then fail.
 
+The Python and JavaScript SDKs include the same check (`verify_chain_offline` and `verifyChainOffline`).
+
 ### Do the stored runs still match the receipts?
 
 ```bash
@@ -287,17 +289,38 @@ it; it is in `.gitignore`. Publish the *public* key.
 
 ## SDKs
 
-The published `iron-thread` packages for Python (`pip install iron-thread`) and JavaScript
-(`npm install iron-thread`) are version 0.3.0. They default to the old hosted URL, which no longer exists,
-so point them at your own server:
+Official clients for Python and JavaScript. Both default to `http://localhost:8000`, send an API key if you give
+them one, return the signed receipt with every verdict, and can verify a chain of receipts offline.
+
+```bash
+pip install iron-thread               # Python 3.10+; for offline verification: pip install "iron-thread[verify]"
+npm install iron-thread               # Node 20+, no dependencies, TypeScript types included
+```
 
 ```python
 from ironthread import IronThread
-it = IronThread("http://localhost:8000")
+
+it = IronThread()                     # or IronThread("https://your-server", api_key="it_...")
+schema = it.create_schema("invoice", {"type": "object", "required": ["amount"]})
+result = it.validate({"amount": 120}, schema["id"])
+print(result.status, result.attestation["entry_hash"])
 ```
 
-They work against a server in default local mode. They do not yet send API keys, and they do not expose
-receipts or offline verification: use the HTTP API or `verify_offline.py` for those. An update is planned.
+```js
+const { IronThread } = require("iron-thread");
+
+const it = new IronThread();          // or new IronThread("https://your-server", { apiKey: "it_..." })
+const schema = await it.createSchema("invoice", { type: "object", required: ["amount"] });
+const result = await it.validate({ amount: 120 }, schema.id);
+console.log(result.status, result.attestation.entry_hash);
+```
+
+Both include the offline check from the section above: `verify_chain_offline` (Python) and `verifyChainOffline`
+(JavaScript) download a chain and verify it on your machine. The JavaScript verifier reproduces the server's
+canonical JSON exactly, and its tests prove that against receipts signed by the Python server.
+
+Version 0.4 works with server 2.x. Earlier releases (0.3 and below) pointed at a hosted service that no longer
+exists. Details: [sdk/README.md](sdk/README.md) and [sdk/iron-thread-js/README.md](sdk/iron-thread-js/README.md).
 
 ---
 
@@ -320,6 +343,7 @@ pytest -q
 | `localdb.py` | SQLite storage with per-thread connections |
 | `examples/quickstart.py` | The walk-through above |
 | `scripts/` | Benchmarks and the experiment behind the SQLite design |
+| `sdk/` | The Python and JavaScript clients, both with offline receipt verification |
 | `.github/workflows/ci.yml` | Tests on Windows and Linux, Python 3.10 to 3.14 |
 | `CONTRIBUTING.md` | How to contribute |
 
@@ -327,8 +351,8 @@ pytest -q
 
 ## Roadmap
 
-Automatic anchoring of head hashes, a JavaScript verifier, updated SDKs, RFC 8785 canonicalization,
-an independent review of the cryptography, provider-agnostic auto-correction.
+Automatic anchoring of head hashes, RFC 8785 canonicalization, an independent review of the cryptography,
+provider-agnostic auto-correction, and releases from GitHub Actions without long-lived tokens.
 
 ---
 
