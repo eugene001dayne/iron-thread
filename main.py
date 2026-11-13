@@ -66,12 +66,26 @@ from reconcile import reconcile  # noqa: E402
 _attest_log = logging.getLogger("iron-thread")
 from fastapi.responses import JSONResponse  # noqa: E402
 from localdb import StorageBusy  # noqa: E402
+from attest_keys import KeyProblem, signing_key_status  # noqa: E402
 
 
 @app.exception_handler(StorageBusy)
 def _storage_busy(request: Request, exc: StorageBusy):
     return JSONResponse(status_code=503, headers={"Retry-After": "1"},
                         content={"detail": "The database is busy. Retry in a moment."})
+
+
+@app.exception_handler(KeyProblem)
+def _key_problem(request: Request, exc: KeyProblem):
+    # The full explanation goes to the server log; callers (some of them anonymous) get only the short code.
+    _attest_log.error("signing key problem: %s", exc)
+    return JSONResponse(status_code=503, content={
+        "detail": f"The server's signing key is unusable ({exc.code}). The server log explains how to fix it."})
+
+
+_startup_key = signing_key_status()
+if _startup_key["status"] == "error":
+    _attest_log.error("SIGNING KEY PROBLEM, receipts cannot be signed until it is fixed: %s", _startup_key["message"])
 
 # ─────────────────────────────────────────────
 # SUPABASE CLIENT
@@ -489,14 +503,18 @@ def root():
 
 @app.get("/health")
 def health():
+    # /health is public, so the signing key is reported by status and short code only: never its path or contents.
+    key = signing_key_status()
+    signing = {k: v for k, v in key.items() if k != "message"}
     try:
         start = datetime.now(timezone.utc)
         with get_client() as client:
             client.get("/schemas", params={"limit": "1"})
         db_latency = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
-        return {"status": "ok", "database": "connected", "db_latency_ms": db_latency}
+        return {"status": "degraded" if key["status"] == "error" else "ok", "database": "connected",
+                "db_latency_ms": db_latency, "signing_key": signing}
     except Exception as e:
-        return {"status": "degraded", "database": "error", "error": str(e)}
+        return {"status": "degraded", "database": "error", "error": str(e), "signing_key": signing}
 
 
 # ── SCHEMAS ──
